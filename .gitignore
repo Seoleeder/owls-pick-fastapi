@@ -1,0 +1,18 @@
+# 환경변수 및 보안 키 (절대 올라가면 안 됨)
+.env
+
+# 파이썬 가상 환경 (용량 큼, 로컬 전용)
+venv/
+.venv/
+env/
+
+# 파이썬 캐시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VS Code 설정 파일
+.vscode/
+
+# 로그 파일
+*.log
