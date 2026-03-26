@@ -1,0 +1,8 @@
+{
+    "type": "object",
+    "properties": {
+        "description_ko": {"type": "string"},
+        "storyline_ko": {"type": "string"}
+    },
+    "required": ["description_ko", "storyline_ko"]
+}

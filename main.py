@@ -1,69 +1,41 @@
-import os
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import google.generativeai as genai
-from dotenv import load_dotenv
+#main.py
 
-# 1. 환경변수 및 API 키 세팅
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+from fastapi import FastAPI
 
-# 2. FastAPI 앱 생성
-app = FastAPI(title="Owl's Pick AI Engine")
+# 설정 및 로거
+from app.core.logger import setup_logger
 
-# ==========================================
-# 🎯 최적의 AI 모델 세팅
-# ==========================================
-# 생성 모델: 번역 워커 & RAG 챗봇 응답용 (가장 빠르고 가성비 좋은 최신 Flash)
-GENERATION_MODEL = "gemini-3.1-flash-preview"
-model = genai.GenerativeModel(GENERATION_MODEL)
+from app.core.events import lifespan
+from app.core.cors import setup_cors
 
-# 임베딩 모델: 텍스트를 벡터 숫자 배열로 변환 (pgvector 저장용)
-EMBEDDING_MODEL = "models/text-embedding-004"
+# API 라우터 
+from app.api import localization
+
+logger = setup_logger("main")
+
+# FastAPI 애플리케이션 객체 생성
+app = FastAPI(
+    title="Owl's Pick AI Microservice",
+    description="게임 데이터 번역, OWLS 챗봇 등 AI 기반 마이크로서비스 API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# 미들웨어(CORS) 적용
+setup_cors(app)
+
+# API 라우터 등록 
+app.include_router(
+    localization.router, 
+    prefix="/api/localization", 
+    tags=["Game Localization"]
+)
+
+# app.include_router(chat.router, prefix="/api/v1/chat", tags=["2. AI Chatbot"])
 
 
-# ==========================================
-# 📦 DTO (요청 데이터 규격 정의)
-# ==========================================
-class TextRequest(BaseModel):
-    text: str
-
-
-# ==========================================
-# 🚀 API 엔드포인트 (Controller)
-# ==========================================
-@app.get("/")
+# 5. Health Check 엔드포인트
+@app.get("/health", tags=["System"])
 async def health_check():
-    return {"status": "ok", "message": "Owl's Pick AI Engine이 정상 가동 중입니다."}
-
-# [기능 1] 번역기 & 챗봇 응답 테스트 (Flash 모델)
-@app.post("/api/generate")
-async def generate_text(req: TextRequest):
-    try:
-        # Spring Boot에서 넘어온 텍스트(또는 프롬프트)를 모델에 전달
-        response = model.generate_content(req.text)
-        return {"success": True, "result": response.text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# [기능 2] 임베딩 테스트 (text-embedding-004 모델)
-@app.post("/api/embed")
-async def create_embedding(req: TextRequest):
-    try:
-        # 텍스트를 벡터(숫자 배열)로 변환
-        result = genai.embed_content(
-            model=EMBEDDING_MODEL,
-            content=req.text,
-            task_type="retrieval_document" # RAG 검색용 문서라는 것을 명시
-        )
-        
-        vector = result['embedding'] # 변환된 숫자 배열
-        
-        return {
-            "success": True,
-            "original_text": req.text,
-            "vector_length": len(vector), # 보통 768개의 숫자가 나옴
-            "vector_preview": vector[:5]  # 너무 기니까 앞의 5개 숫자만 미리보기
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """MSA 환경(Docker, k8s 등)에서 서버가 살아있는지 확인하는 용도"""
+    return {"status": "ok", "service": "owls-pick-ai"}
