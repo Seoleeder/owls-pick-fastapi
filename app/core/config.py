@@ -15,11 +15,12 @@ def init_config():
     # .env 파일에서 환경변수 로드
     load_dotenv()
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    # Vertex AI용 GCP 서비스 계정 인증 키 경로 로드
+    gcp_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
-    # API 키가 없으면 서버 구동 X (런타임 에러 방지)
-    if not api_key:
-        logger.error("GEMINI_API_KEY is not set in the .env file.")
-        raise ValueError("GEMINI_API_KEY is missing. Check your .env configuration.")
+    # GCP 인증 키가 없으면 서버 구동 중지 (런타임 에러 방지)
+    if not gcp_credentials:
+        logger.error("GOOGLE_APPLICATION_CREDENTIALS is not set in the .env file.")
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS is missing. Check your .env configuration.")
     
-    logger.info("Google Gemini API configuration completed successfully.")
+    logger.info("Google Cloud Vertex AI configuration completed successfully.")

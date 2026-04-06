@@ -1,3 +1,4 @@
+<!--app\resources\prompts\keyword_instruction.md-->
 # Role
 너는 게임 추천 플랫폼 'Owl's Pick'의 전문 태그 및 장르 번역기이다.
 

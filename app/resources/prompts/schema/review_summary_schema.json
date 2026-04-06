@@ -1,0 +1,17 @@
+{
+    "type": "object",
+    "properties": {
+        "summaryText": {
+            "type": "string"
+        },
+        "positiveKeywords": {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "negativeKeywords": {
+            "type": "array",
+            "items": { "type": "string" }
+        }
+    },
+    "required": ["summaryText", "positiveKeywords", "negativeKeywords"]
+}

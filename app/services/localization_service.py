@@ -19,7 +19,7 @@ FAILED_MARK = "LOCALIZATION_FAILED"
 class LocalizationService:
     def __init__(self):
         # 번역 전용 환경 변수 로드
-        self.model_name = os.getenv("Localization_MODEL_NAME", "gemini-3.1-flash-lite-preview")
+        self.model_name = os.getenv("Localization_MODEL_NAME", "gemini-2.5-flash")
         self.temperature = float(os.getenv("Localization_TEMPERATURE", "0.2"))
 
         # 리소스 파일 (프롬프트, 스키마) 로드 
@@ -27,7 +27,14 @@ class LocalizationService:
         response_schema = load_json_schema("localization_schema.json")
 
         # Gemini 클라이언트 초기화
-        self.client = genai.Client()
+        self.project_id = os.getenv("GCP_PROJECT_ID", "owls-pick-2026")
+        self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
+        
+        self.client = genai.Client(
+            vertexai=True,
+            project=self.project_id,
+            location=self.location
+        )
         
         # 모델 생성 옵션(지침, 포맷, 안전 필터) 설정
         self.config = types.GenerateContentConfig(

@@ -10,6 +10,7 @@ from app.core.cors import setup_cors
 
 # API 라우터 
 from app.api import localization
+from app.api import review_summary
 
 logger = setup_logger("main")
 
@@ -31,10 +32,13 @@ app.include_router(
     tags=["Game Localization"]
 )
 
-# app.include_router(chat.router, prefix="/api/v1/chat", tags=["2. AI Chatbot"])
+app.include_router(
+    review_summary.router,
+    prefix="/api/genai/summarize",
+    tags=["Review Summary"]
+)
 
-
-# 5. Health Check 엔드포인트
+# Health Check 엔드포인트
 @app.get("/health", tags=["System"])
 async def health_check():
     """MSA 환경(Docker, k8s 등)에서 서버가 살아있는지 확인하는 용도"""

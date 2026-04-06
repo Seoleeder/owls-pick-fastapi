@@ -14,7 +14,7 @@ logger = setup_logger(__name__)
 class KeywordLocalizationService:
     def __init__(self):
         # 환경 변수 로드 (키워드 매핑은 특히 일관성이 중요하므로 온도를 낮게 유지)
-        self.model_name = os.getenv("KEYWORD_MODEL_NAME", "gemini-3.1-flash-lite-preview")
+        self.model_name = os.getenv("KEYWORD_MODEL_NAME", "gemini-2.5-flash")
         self.temperature = float(os.getenv("KEYWORD_TEMPERATURE", "0.1"))
 
         # 리소스 파일 로드 (시스템 지침, JSON 스키마)
@@ -22,7 +22,14 @@ class KeywordLocalizationService:
         response_schema = load_json_schema("keyword_schema.json")
 
         # Gemini 클라이언트 초기화
-        self.client = genai.Client()
+        self.project_id = os.getenv("GCP_PROJECT_ID", "owls-pick-2026")
+        self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
+        
+        self.client = genai.Client(
+            vertexai=True,
+            project=self.project_id,
+            location=self.location
+        )
         
         # 모델 생성 옵션 설정 (JSON 응답 강제 및 안전 필터 해제)
         self.config = types.GenerateContentConfig(
