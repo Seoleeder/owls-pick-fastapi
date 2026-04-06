@@ -1,5 +1,6 @@
 #app\api\localization.py
 
+import traceback
 from fastapi import APIRouter
 from app.schema.localization_dto import BulkLocalizationRequest, BulkLocalizationResponse, BulkKeywordLocalizationResponse, KeywordLocalizationRequest
 from app.services.localization_service import LocalizationService
@@ -49,5 +50,6 @@ async def localize_bulk_keywords(req: KeywordLocalizationRequest):
         
     except Exception as e:
         # 실패 시 500 에러를 반환하여 Spring Boot에서 캐치하도록 유도
+        logger.error(f"Python Internal Error:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
