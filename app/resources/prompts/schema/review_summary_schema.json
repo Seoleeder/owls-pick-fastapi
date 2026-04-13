@@ -1,17 +1,17 @@
 {
     "type": "object",
     "properties": {
-        "summaryText": {
+        "summary_text": {
             "type": "string"
         },
-        "positiveKeywords": {
+        "positive_keywords": {
             "type": "array",
             "items": { "type": "string" }
         },
-        "negativeKeywords": {
+        "negative_keywords": {
             "type": "array",
             "items": { "type": "string" }
         }
     },
-    "required": ["summaryText", "positiveKeywords", "negativeKeywords"]
+    "required": ["summary_text", "positive_keywords", "negative_keywords"]
 }

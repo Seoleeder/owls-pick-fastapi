@@ -18,12 +18,12 @@ async def summarize_game_reviews(req: ReviewSummaryRequest):
     게임 리뷰 요약 및 긍정/부정 키워드 추출 API
     Spring Boot 서버에서 단일 게임 단위로 호출
     """
-    logger.info(f"Received Request: Review Summary for Game ID {req.gameId} ({len(req.reviewTexts)} reviews)")
+    logger.info(f"Received Request: Review Summary for Game ID {req.game_id} ({len(req.review_texts)} reviews)")
     
     try:
         # 서비스 계층 호출
         result = await summary_service.summarize_reviews(req)
-        logger.info(f"Review Summary Completed for Game ID {req.gameId}.")
+        logger.info(f"Review Summary Completed for Game ID {req.game_id}.")
         
         return result
         

@@ -50,16 +50,16 @@ class ReviewSummaryService:
         """
         리뷰 요약 파이프라인 실행 (핵심 요약 및 긍/부정 키워드 추출)
         """
-        if not request.reviewTexts:
+        if not request.review_texts:
             return ReviewSummaryResponse()
 
         # LLM 컨텍스트 주입을 위한 리뷰 텍스트 병합 
-        joined_reviews = "\n---\n".join(request.reviewTexts)
-        prompt = f"다음은 게임 ID {request.gameId}의 유저 리뷰들입니다. 이를 바탕으로 요약과 키워드를 추출해주세요.\n\n<Reviews>\n{joined_reviews}\n</Reviews>"
+        joined_reviews = "\n---\n".join(request.review_texts)
+        prompt = f"다음은 게임 ID {request.game_id}의 유저 리뷰들입니다. 이를 바탕으로 요약과 키워드를 추출해주세요.\n\n<Reviews>\n{joined_reviews}\n</Reviews>"
         
         # 실제 데이터 분포(긍/부정 비율)에 따른 동적 설정 빌드
         dynamic_config = ReviewConfigFactory.create_config(
-            review_score=request.reviewScore,
+            review_score=request.review_score,
             base_instruction=self.base_instruction,
             response_schema=self.response_schema,
             temperature=self.temperature
@@ -78,14 +78,14 @@ class ReviewSummaryService:
 
                 # 응답 데이터 누락 검증 (구글 측 차단 또는 빈 응답)
                 if not response.candidates or not response.text:
-                    logger.warning(f"[Game ID: {request.gameId}] Blocked by Google Safety Filter. Returning {SUMMARY_FAILED_FLAG} flag.")
-                    return ReviewSummaryResponse(summaryText=SUMMARY_FAILED_FLAG)
+                    logger.warning(f"[Game ID: {request.game_id}] Blocked by Google Safety Filter. Returning {SUMMARY_FAILED_FLAG} flag.")
+                    return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
 
                 # 글자 수 제한 또는 안전 필터에 의한 비정상 종료 검증
                 finish_reason = response.candidates[0].finish_reason
                 if finish_reason and finish_reason.name != "STOP":
-                    logger.warning(f"[Game ID: {request.gameId}] Aborted by filter (Reason: {finish_reason.name}). Returning {SUMMARY_FAILED_FLAG} flag.")
-                    return ReviewSummaryResponse(summaryText=SUMMARY_FAILED_FLAG)
+                    logger.warning(f"[Game ID: {request.game_id}] Aborted by filter (Reason: {finish_reason.name}). Returning {SUMMARY_FAILED_FLAG} flag.")
+                    return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
                 # 정상 응답 시 JSON 파싱 및 DTO 매핑
                 result_json = json.loads(response.text)
                 return ReviewSummaryResponse(**result_json)
@@ -94,11 +94,11 @@ class ReviewSummaryService:
                 # 네트워크 오류 등 발생 시 지수 백오프(Exponential Backoff) 적용
                 if attempt < retries - 1:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[Game ID: {request.gameId}] API Hiccup, retrying in {sleep_time}s... ({str(e)})")
+                    logger.warning(f"[Game ID: {request.game_id}] API Hiccup, retrying in {sleep_time}s... ({str(e)})")
                     await asyncio.sleep(sleep_time)
                     continue
                 
                 # 최대 재시도 횟수 초과 시 최종 실패 로깅
-                logger.error(f"[Review Summary Failed] Exhausted retries for Game ID {request.gameId}. Error: {str(e)}")
+                logger.error(f"[Review Summary Failed] Exhausted retries for Game ID {request.game_id}. Error: {str(e)}")
                 
                 raise e
