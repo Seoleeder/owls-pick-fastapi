@@ -81,7 +81,7 @@ class KeywordLocalizationService:
 
                 # JSON 파싱 
                 result_json = json.loads(response.text)
-                parsed_list = result_json.get("localizationResults", [])
+                parsed_list = result_json.get("localization_results", [])
 
                 # Pydantic 객체로 변환하여 반환
                 return [KeywordResult(**item) for item in parsed_list]
@@ -134,17 +134,17 @@ class KeywordLocalizationService:
                     raise ValueError(f"Aborted ({finish_reason.name})")
 
                 result_json = json.loads(response.text)
-                parsed_list = result_json.get("localizationResults", [])
+                parsed_list = result_json.get("localization_results", [])
                 
                 # 정상 파싱되었다면 번역된 결과 반환
                 if parsed_list:
                     return KeywordResult(**parsed_list[0])
                 
                 # 구조가 맞지 않는 이상 응답 방어
-                return KeywordResult(engName=keyword, korName=keyword)
+                return KeywordResult(eng_name=keyword, kor_name=keyword)
 
         except Exception as e:
             
             # 필터링에 걸린 키워드이거나 개별 통신에 실패한 경우 영문 원본을 반환
             logger.warning(f"[Isolated Safety Block] Keyword '{keyword}' failed to translate. Returning original. Reason: {str(e)}")
-            return KeywordResult(engName=keyword, korName=keyword)
+            return KeywordResult(eng_name=keyword, kor_name=keyword)

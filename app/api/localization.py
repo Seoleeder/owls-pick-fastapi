@@ -46,7 +46,7 @@ async def localize_bulk_keywords(req: KeywordLocalizationRequest):
         results = await keyword_service.process_keyword_localization(req.keywords)
         logger.info(f"Keyword Localization Completed: Returning {len(results)} results.")
         
-        return BulkKeywordLocalizationResponse(localizationResults=results)
+        return BulkKeywordLocalizationResponse(localization_results=results)
         
     except Exception as e:
         # 실패 시 500 에러를 반환하여 Spring Boot에서 캐치하도록 유도

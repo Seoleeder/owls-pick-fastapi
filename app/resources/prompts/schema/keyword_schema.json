@@ -1,17 +1,17 @@
 {
     "type": "object",
     "properties": {
-        "localizationResults": {
+        "localization_results": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "engName": {"type": "string"},
-                    "korName": {"type": "string"}
+                    "eng_name": {"type": "string"},
+                    "kor_name": {"type": "string"}
                 },
                 "required": ["engName", "korName"]
             }
         }
     },
-    "required": ["localizationResults"]
+    "required": ["localization_results"]
 }

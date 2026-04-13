@@ -11,6 +11,7 @@ from app.core.cors import setup_cors
 # API 라우터 
 from app.api import localization
 from app.api import review_summary
+from app.api import hltb
 
 logger = setup_logger("main")
 
@@ -36,6 +37,12 @@ app.include_router(
     review_summary.router,
     prefix="/api/genai/summarize",
     tags=["Review Summary"]
+)
+
+app.include_router(
+    hltb.router,
+    prefix="/api/hltb",
+    tags=["HowLongToBeat"]
 )
 
 # Health Check 엔드포인트
