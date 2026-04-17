@@ -1,3 +1,5 @@
+#app\schema\base_dto.py
+
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
