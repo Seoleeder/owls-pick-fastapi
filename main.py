@@ -12,6 +12,11 @@ from app.core.cors import setup_cors
 from app.api import localization
 from app.api import review_summary
 from app.api import hltb
+from app.api import embedding
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
 
 logger = setup_logger("main")
 
@@ -43,6 +48,12 @@ app.include_router(
     hltb.router,
     prefix="/api/hltb",
     tags=["HowLongToBeat"]
+)
+
+app.include_router(
+    embedding.router,
+    prefix="/api/genai/embeddings",
+    tags=["Embedding"]
 )
 
 # Health Check 엔드포인트

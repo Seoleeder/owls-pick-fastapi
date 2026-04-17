@@ -1,9 +1,7 @@
+#app\schema\hltb_dto.py
+
 from enum import Enum
 from app.schema.base_dto import CamelModel
-
-# ==========================================
-# [HLTB Sync Response] 플레이타임 수집 DTO
-# ==========================================
 
 # ==========================================
 # [HLTB Sync Status Enum] 동기화 상태값
@@ -14,6 +12,10 @@ class SyncStatus(str, Enum):
     NO_DATA = "NO_DATA"    
     NOT_FOUND = "NOT_FOUND" 
     FAILED = "FAILED"
+
+# ==========================================
+# [HLTB Sync Response] 플레이타임 수집 DTO
+# ==========================================
 
 class HltbSyncResponse(CamelModel):
     """
