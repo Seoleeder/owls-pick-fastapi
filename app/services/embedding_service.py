@@ -1,3 +1,5 @@
+#app\services\embedding_service.py
+
 import os
 import asyncio
 import logging
@@ -6,7 +8,7 @@ from google import genai
 from google.genai import types
 from app.services.factories.embedding_source_factory import EmbeddingSourceFactory
 
-from app.schema.embedding_dto import RawGameData, EmbeddingResult, EmbeddingStatus
+from app.schema.embedding_dto import EmbeddingData, EmbeddingResult, EmbeddingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +26,16 @@ class EmbeddingService:
         self.project_id = os.getenv("GCP_PROJECT_ID")
         self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
         
-        # 출력 차원 축소 및 토큰 제한 설정
-        self.output_dimension = 768
+        # 출력 차원 및 작업 타입 환경 변수 로드
+        self.output_dimension = int(os.getenv("EMBEDDING_OUTPUT_DIMENSION", "768"))
+        self.task_type = os.getenv("EMBEDDING_DOCUMENT_TASK_TYPE", "RETRIEVAL_DOCUMENT")
+        
+        # 토큰 제한 설정
         self.max_text_length = int(os.getenv("EMBEDDING_MAX_TEXT_LENGTH", "4000"))
         
         # 마이크로 배치 및 지연(Sleep) 설정
         self.micro_batch_size = int(os.getenv("EMBEDDING_MICRO_BATCH_SIZE", "10"))
-        self.sleep_seconds = float(os.getenv("EMBEDDING_SLEEP_SECONDS", "2.0"))
+        self.sleep_seconds = float(os.getenv("EMBEDDING_SLEEP_SECONDS", "1.0"))
 
         # Vertex AI 클라이언트 초기화
         self.client = genai.Client(
@@ -44,7 +49,7 @@ class EmbeddingService:
 
         logger.info(f"[Embedding Engine] Initialized (Model: {self.model_name}, Dimension: {self.output_dimension})")
 
-    async def generate_embedding(self, game: RawGameData, retries: int = 2) -> EmbeddingResult:
+    async def generate_embedding(self, game: EmbeddingData, retries: int = 2) -> EmbeddingResult:
         """
         단일 게임 데이터 벡터 임베딩 변환
         """
@@ -64,7 +69,7 @@ class EmbeddingService:
                         model=self.model_name,
                         contents=source_text,
                         config=types.EmbedContentConfig(
-                            task_type="RETRIEVAL_DOCUMENT",
+                            task_type=self.task_type,
                             title=game.title,
                             output_dimensionality=self.output_dimension
                         )
@@ -74,7 +79,6 @@ class EmbeddingService:
                 return EmbeddingResult(
                     game_id=game.game_id,
                     vector=response.embeddings[0].values,
-                    source_text=source_text,
                     status=EmbeddingStatus.SUCCESS
                 )
 
@@ -90,7 +94,7 @@ class EmbeddingService:
                 logger.error(f"[Embedding Failed] Game ID {game.game_id}: {str(e)}")
                 return EmbeddingResult(game_id=game.game_id, vector=None, status=EmbeddingStatus.FAILED)
 
-    async def process_batch(self, batch: List[RawGameData]) -> List[EmbeddingResult]:
+    async def process_batch(self, batch: List[EmbeddingData]) -> List[EmbeddingResult]:
         """
         배치 단위 게임 데이터 비동기 병렬 임베딩 처리
         """

@@ -16,7 +16,7 @@ class EmbeddingStatus(str, Enum):
 # [Embedding Request] 게임 메타데이터 청크 요청 DTO
 # ==========================================
 
-class RawGameData(CamelModel):
+class EmbeddingData(CamelModel):
     """
     Spring Boot -> FastAPI 임베딩 원본 데이터 DTO
     """
@@ -27,14 +27,12 @@ class RawGameData(CamelModel):
     themes: list[str] = []
     keywords: list[str] = []
     main_story: int | None = None
-    review_score_desc: str | None = None
-    review_summary: str | None = None
 
 class EmbeddingBatchRequest(CamelModel):
     """
     배치 단위 임베딩 요청 DTO
     """
-    games: list[RawGameData]
+    games: list[EmbeddingData]
 
 # ==========================================
 # [Embedding Response] 벡터 임베딩 결과 응답 DTO
@@ -46,7 +44,6 @@ class EmbeddingResult(CamelModel):
     """
     game_id: int
     vector: list[float] | None = None
-    source_text: str
     status: str
 
 class EmbeddingBatchResponse(CamelModel):

@@ -1,3 +1,5 @@
+#app\api\embedding.py
+
 import traceback
 from typing import List
 from fastapi import APIRouter, HTTPException
