@@ -13,6 +13,7 @@ from app.api import localization
 from app.api import review_summary
 from app.api import hltb
 from app.api import embedding
+from app.api import owls_chat
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -48,12 +49,19 @@ app.include_router(
     hltb.router,
     prefix="/api/hltb",
     tags=["HowLongToBeat"]
+    
 )
 
 app.include_router(
     embedding.router,
     prefix="/api/genai/embeddings",
     tags=["Embedding"]
+)
+
+app.include_router(
+    owls_chat.router,
+    prefix="/api/genai/chat",
+    tags=["RAG Chatbot"]
 )
 
 # Health Check 엔드포인트
