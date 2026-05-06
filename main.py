@@ -2,6 +2,9 @@
 
 from fastapi import FastAPI
 
+# 메트릭 수집 라이브러리
+from prometheus_fastapi_instrumentator import Instrumentator
+
 # 설정 및 로거
 from app.core.logger import setup_logger
 
@@ -15,9 +18,6 @@ from app.api import hltb
 from app.api import embedding
 from app.api import owls_chat
 
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi import Request
 
 logger = setup_logger("main")
 
@@ -31,6 +31,16 @@ app = FastAPI(
 
 # 미들웨어(CORS) 적용
 setup_cors(app)
+
+# Prometheus 메트릭 수집기 세팅
+instrumentator = Instrumentator(
+    should_group_status_codes=False,            # 상태 코드 개별 수집 (200, 404, 500 등 그룹화 방지)
+    should_ignore_untemplated=True,             # 잘못된 경로의 요청은 수집 제외
+    should_instrument_requests_inprogress=True, # 현재 처리 중인 요청 개수 추적 활성화
+).instrument(app)
+
+# /metrics 엔드포인트 개방 
+instrumentator.expose(app, endpoint="/metrics", tags=["System"])
 
 # API 라우터 등록 
 app.include_router(
