@@ -11,6 +11,9 @@ from app.core.logger import setup_logger
 from app.core.events import lifespan
 from app.core.cors import setup_cors
 
+# 커스텀 미들웨어
+from app.core.middleware import TraceIdMiddleware
+
 # API 라우터 
 from app.api import localization
 from app.api import review_summary
@@ -28,6 +31,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# 미들웨어(Trace ID 분산 추적) 등록 - 가장 먼저 요청을 가로채서 식별자 부여
+app.add_middleware(TraceIdMiddleware)
 
 # 미들웨어(CORS) 적용
 setup_cors(app)
