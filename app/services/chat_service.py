@@ -40,6 +40,8 @@ class ChatService:
         
         # 시스템 프롬프트 및 응답 스키마 로드 
         self._load_resources()
+        
+        logger.info(f"[GenAI-Chat] Initialized (Chat: {self.chat_model}, Embedding: {self.embedding_model})")
 
     def _load_resources(self):
         """
@@ -83,7 +85,7 @@ class ChatService:
                 
             except Exception as e:
                 # 재작성 API 호출 실패 시 원본 메시지로 대체 (폴백 처리)
-                logger.warning(f"[Rewriting Failed] Using original message: {e}")
+                logger.warning(f"[GenAI-Chat] Rewriting Failed. Using original message. Error: {str(e)}")
                 processed_message = request.user_message
 
         try:
@@ -99,7 +101,7 @@ class ChatService:
             # 추출된 벡터 리스트 반환
             return embedding_response.embeddings[0].values
         except Exception as e:
-            logger.error(f"[Embedding Failed] {str(e)}")
+            logger.error(f"[GenAI-Chat] Query Embedding Failed | Error: {str(e)}")
             raise e
 
     async def generate_chat_reply(self, request: RagGenerationRequest) -> str:
@@ -110,12 +112,12 @@ class ChatService:
         # [DEBUG] Context(게임 메타데이터) 상세 추적
         # Spring Boot에서 전달한 데이터가 누락 없이 도착했는지, LLM이 무엇을 읽는지 확인
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Starting Chat Generation with {len(request.contexts)} contexts.")
+            logger.debug(f"[GenAI-Chat] Starting Chat Generation with {len(request.contexts)} contexts.")
             for idx, context in enumerate(request.contexts):
                 # 최대 100자까지만 잘라서 로깅
                 text_preview = context[:100] + "..." if len(context) > 100 else context
-                logger.debug(f"Context [{idx + 1}] Preview: {text_preview}")
-        
+                logger.debug(f"[GenAI-Chat] Context [{idx + 1}] Preview: {text_preview}")
+                
         # 제공된 이전 대화 내역 문자열 포맷팅
         formatted_history = "\n".join([f"{h.role}: {h.content}" for h in request.history])
         
@@ -150,5 +152,5 @@ class ChatService:
             return reply_text.strip()
             
         except Exception as e:
-            logger.error(f"[Generation Failed] {str(e)}")
+            logger.error(f"[GenAI-Chat] Generation Failed | Error: {str(e)}")
             raise e

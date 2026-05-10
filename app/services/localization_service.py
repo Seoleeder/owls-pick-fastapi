@@ -48,8 +48,7 @@ class LocalizationService:
         # 동시성 제어 (Rate Limit 방어를 위해 최대 50개의 코루틴만 API 동시 호출 허용)
         self.semaphore = asyncio.Semaphore(50)
         
-        logger.info(f"[Localization Engine] Initialized with modern google-genai SDK (Model: {self.model_name})")
-
+        logger.info(f"[Localization] Initialized with modern google-genai SDK (Model: {self.model_name})")
 
     async def localize_task (self, game: GameItem, retries: int = 2) -> LocalizationResult:
         """
@@ -85,13 +84,13 @@ class LocalizationService:
                 
                 # API 차단 또는 빈 응답 발생 시 즉시 실패 처리
                 if not response.candidates or not response.text:
-                    logger.warning(f"[Game ID: {game.game_id}] Blocked by Google (No content returned). Skipping.")
+                    logger.warning(f"[Localization] Blocked by Google Safety Filter (No content returned). Skipping - GameId: {game.game_id}")
                     return self._build_fallback_result(game.game_id, has_desc, has_story)
 
                 # 정상 종료 외 모든 케이스는 불완전 응답으로 간주하여 즉시 실패 처리
                 finish_reason = response.candidates[0].finish_reason
                 if finish_reason and finish_reason.name != "STOP":
-                    logger.warning(f"[Game ID: {game.game_id}] Aborted by Gemini (Reason: {finish_reason.name}). Skipping.")
+                    logger.warning(f"[Localization] Aborted by Gemini (Reason: {finish_reason.name}). Skipping - GameId: {game.game_id}")
                     return self._build_fallback_result(game.game_id, has_desc, has_story)
                 
                 # 응답 JSON 파싱 및 결과 매핑
@@ -111,12 +110,12 @@ class LocalizationService:
                 # 일시적 오류 시 대기 시간 점진적 증가 후 재시도
                 if attempt < retries - 1:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[Game ID: {game.game_id}] API Hiccup, retrying... ({str(e)})")
+                    logger.warning(f"[Localization] API Hiccup, retrying... GameId: {game.game_id} ({str(e)})")
                     await asyncio.sleep(sleep_time)
                     continue
                 
                 # 최대 재시도 횟수 초과 시 최종 실패 처리
-                logger.error(f"[Final Failure] ID {game.game_id}: {str(e)}")
+                logger.error(f"[Localization] Final Failure - GameId: {game.game_id} | Error: {str(e)}")
                 
                 return self._build_fallback_result(game.game_id, has_desc, has_story)
 
@@ -126,7 +125,7 @@ class LocalizationService:
         대량의 게임 데이터 비동기 병렬 한글화 파이프라인
         """
         total_count = len(games)
-        logger.info(f"Starting async concurrent localization for {len(games)} game items.")
+        logger.debug(f"[Localization] Starting async concurrent localization for {len(games)} items.")
         
         # 개별 게임 데이터를 비동기 작업 단위(Coroutine) 리스트로 변환
         # 실행 대기 상태의 코루틴 객체들을 생성하여 배치(Batch) 준비
@@ -136,7 +135,7 @@ class LocalizationService:
         # await: 모든 비동기 작업이 완료될 때까지 대기하는 동기화 포인트(Barrier) 역할
         results = await asyncio.gather(*tasks)
         
-        logger.info(f"Localization completed for {total_count} items.")
+        logger.debug(f"[Localization] Localization completed for {total_count} items.")
         
         return list(results)
     
