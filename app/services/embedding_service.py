@@ -47,7 +47,7 @@ class EmbeddingService:
         # API Rate Limit 방어용 세마포어 설정
         self.semaphore = asyncio.Semaphore(self.semaphore_limit)
 
-        logger.info(f"[Embedding Engine] Initialized (Model: {self.model_name}, Dimension: {self.output_dimension})")
+        logger.info(f"[GenAI-Embedding] Initialized (Model: {self.model_name}, Dimension: {self.output_dimension})")
 
     async def generate_embedding(self, game: EmbeddingData, retries: int = 2) -> EmbeddingResult:
         """
@@ -58,7 +58,7 @@ class EmbeddingService:
         
         # 유효 텍스트 부족 시 임베딩 생략 및 실패 상태 반환
         if not source_text or len(source_text) < 5:
-            logger.warning(f"[Game ID: {game.game_id}] Skip: Insufficient text.")
+            logger.debug(f"[GenAI-Embedding] Skip: Insufficient text - GameId: {game.game_id}")
             return EmbeddingResult(game_id=game.game_id, vector=None, status=EmbeddingStatus.FAILED)
 
         # 지수 백오프 기반 API 호출
@@ -86,14 +86,14 @@ class EmbeddingService:
                 # API 호출 실패 시 대기 후 바로 재시도
                 if attempt < retries:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[Game ID: {game.game_id}] Retry {attempt+1}/{retries} after {sleep_time}s")
+                    logger.warning(f"[GenAI-Embedding] API Hiccup, retry {attempt+1}/{retries} after {sleep_time}s - GameId: {game.game_id}")
                     await asyncio.sleep(sleep_time)
                     continue
                 
                 # 최대 재시도 횟수 초과 시 최종 실패 로깅 및 실패 상태 고립
-                logger.error(f"[Embedding Failed] Game ID {game.game_id}: {str(e)}")
+                logger.error(f"[GenAI-Embedding] Final Failure - GameId: {game.game_id} | Error: {str(e)}")
                 return EmbeddingResult(game_id=game.game_id, vector=None, status=EmbeddingStatus.FAILED)
-
+            
     async def process_batch(self, batch: List[EmbeddingData]) -> List[EmbeddingResult]:
         """
         배치 단위 게임 데이터 비동기 병렬 임베딩 처리
@@ -101,7 +101,7 @@ class EmbeddingService:
         results: List[EmbeddingResult] = []
         total_games = len(batch)
         
-        logger.info(f"[Embedding Batch] Processing {total_games} games in micro-batches of {self.micro_batch_size}.")
+        logger.debug(f"[GenAI-Embedding] Processing {total_games} games in micro-batches of {self.micro_batch_size}.")
 
         for i in range(0, total_games, self.micro_batch_size):
             # 배치 데이터를 설정된 마이크로 배치 단위로 분할
@@ -116,8 +116,8 @@ class EmbeddingService:
             
             # 마지막 배치가 아닐 경우, 지연 시간 부여
             if i + self.micro_batch_size < total_games:
-                logger.info(f"[Embedding Batch] Processed {i + len(micro_batch)}/{total_games}. Sleeping for {self.sleep_seconds}s...")
+                logger.debug(f"[GenAI-Embedding] Processed {i + len(micro_batch)}/{total_games}. Sleeping for {self.sleep_seconds}s...")
                 await asyncio.sleep(self.sleep_seconds)
                 
-        logger.info("[Embedding Batch] All micro-batches processed successfully.")
+        logger.debug("[GenAI-Embedding] All micro-batches processed successfully.")
         return results

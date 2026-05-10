@@ -1,3 +1,5 @@
+#app\services\keyword_localization_service.py
+
 import os
 import json
 import asyncio
@@ -43,8 +45,7 @@ class KeywordLocalizationService:
         # 폴백 모드 발동 시 API Rate Limit(초당 요청 수) 초과를 방지하기 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(50)
 
-        logger.info(f"[Keyword Localization Engine] Initialized (Model: {self.model_name})")
-
+        logger.info(f"[KeywordLocalization] Initialized (Model: {self.model_name})")
 
     async def process_keyword_localization(self, keywords: list[str], retries: int = 2) -> list[KeywordResult]:
         """
@@ -95,12 +96,12 @@ class KeywordLocalizationService:
                     continue
                 
                 # 재시도를 모두 소진했다면, 특정 태그로 인한 차단일 확률이 높음
-                logger.error(f"[Bulk Translation Failed] Exhausted retries. Triggering Individual Async Fallback. Error: {str(e)}")
-            
+                logger.error(f"[KeywordLocalization] Bulk Translation Failed. Exhausted retries. Triggering Individual Async Fallback. Error: {str(e)}")
+                
         # --- [단건 비동기 폴백 (Fallback)] ---
         # 벌크 처리가 최종 실패하여 루프를 빠져나왔을 때 실행
             
-        logger.info(f"Starting individual fallback for {len(keywords)} keywords...")
+        logger.debug(f"[KeywordLocalization] Starting individual fallback for {len(keywords)} keywords...")
         
         # 각 키워드별로 독립적인 코루틴 생성
         tasks = [self._localize_single_keyword(kw) for kw in keywords]
@@ -146,5 +147,5 @@ class KeywordLocalizationService:
         except Exception as e:
             
             # 필터링에 걸린 키워드이거나 개별 통신에 실패한 경우 영문 원본을 반환
-            logger.warning(f"[Isolated Safety Block] Keyword '{keyword}' failed to translate. Returning original. Reason: {str(e)}")
+            logger.warning(f"[KeywordLocalization] Isolated Safety Block. Keyword '{keyword}' failed to translate. Returning original. Reason: {str(e)}")
             return KeywordResult(eng_name=keyword, kor_name=keyword)
