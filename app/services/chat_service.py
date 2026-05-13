@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from google import genai
 from google.genai import types
-from app.schema.owls_chat_dto import QueryEmbeddingRequest, RagGenerationRequest
+from app.schema.owls_chat_dto import QueryEmbeddingRequest, RagGenerationRequest, TitleGenerationRequest
 from app.utils.file_util import load_prompt_text, load_json_schema, load_prompt_template
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ class ChatService:
         self.output_dimension = int(os.getenv("EMBEDDING_OUTPUT_DIMENSION", "768"))
         self.task_type = os.getenv("EMBEDDING_QUERY_TASK_TYPE", "RETRIEVAL_QUERY")
         self.chat_temperature = float(os.getenv("CHAT_TEMPERATURE", "0.3"))
+        self.title_temperature = float(os.getenv("TITLE_GENERATION_TEMPERATURE", "0.1"))
         
         # Vertex AI 프로젝트 및 리전 설정
         self.project_id = os.getenv("GCP_PROJECT_ID")
@@ -49,11 +50,15 @@ class ChatService:
         """
         # Owls 챗봇에 대한 시스템 프롬프트 및 JSON 스키마 로드
         self.system_instruction = load_prompt_text("chat_system.md")
-        self.response_schema = load_json_schema("chat_response.json")
+        self.response_schema = load_json_schema("chat_response_schema.json")
             
         # 메시지 재작성 및 챗봇 응답 생성 템플릿 로드
         self.rewrite_prompt_tmpl = load_prompt_template("chat_rewrite.md")
         self.generation_prompt_tmpl = load_prompt_template("chat_generation.md")
+        
+        # 세션 제목 요약용 시스템 프롬프트 및 JSON 스키마 로드
+        self.title_system_instruction = load_prompt_text("title_generation_instruction.md")
+        self.title_response_schema = load_json_schema("title_generation_schema.json")
 
     async def extract_query_embedding(self, request: QueryEmbeddingRequest) -> list[float]:
         """
@@ -153,4 +158,35 @@ class ChatService:
             
         except Exception as e:
             logger.error(f"[GenAI-Chat] Generation Failed | Error: {str(e)}")
+            raise e
+        
+    async def generate_session_title(self, request: TitleGenerationRequest) -> str:
+        """
+        사용자의 첫 발화를 분석하여 채팅 세션 타이틀 생성 (30자 이내)
+        """
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[GenAI-Chat] Starting Title Generation for message: {request.user_message}")
+
+        try:
+            # 텍스트 생성 API 호출
+            generation_response = await self.client.aio.models.generate_content(
+                model=self.chat_model,
+                contents=request.user_message, # 사용자 발화 원본 메시지만 전달 
+                config=types.GenerateContentConfig(
+                    system_instruction=self.title_system_instruction,
+                    temperature=self.title_temperature, 
+                    response_mime_type="application/json",
+                    response_schema=self.title_response_schema
+                )
+            )
+            
+            # JSON 응답 파싱
+            response_data = json.loads(generation_response.text)
+            title_text = str(response_data.get("title", ""))
+            
+            # 앞뒤 공백 제거 후 생성된 세션 타이틀 반환 
+            return title_text.strip()
+            
+        except Exception as e:
+            logger.error(f"[GenAI-Chat] Title Generation Failed | Error: {str(e)}")
             raise e
