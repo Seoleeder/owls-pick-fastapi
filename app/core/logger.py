@@ -38,7 +38,8 @@ def setup_logger(name: str) -> logging.Logger:
         
         # 로그 출력 포맷 지정 
         formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - [%(trace_id)s] - %(name)s - %(message)s"
+            "%(asctime)s.%(msecs)03d [%(threadName)s] %(levelname)-5s [%(trace_id)s] %(name)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
         )
         
         # 로컬 디버깅용 콘솔 출력 핸들러 설정
