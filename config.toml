@@ -1,0 +1,14 @@
+# config.toml
+
+[review]
+semaphore_limit = 10
+
+[hltb]
+semaphore_limit = 10
+
+[embedding]
+output_dimension = 768
+max_concurrent_tasks = 10
+max_text_length = 4000
+micro_batch_size = 20
+sleep_seconds = 0.5
