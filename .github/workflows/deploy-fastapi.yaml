@@ -7,12 +7,9 @@ on:
     paths:
       - '**.py'
       - 'requirements.txt'
+      - '**.toml'
       - 'Dockerfile'
       - '.github/workflows/deploy-fastapi.yml'
-      - 'config.toml'
-      - '**.json'
-      - '**.md'
-      - '!README.md'
 
 
 jobs:
@@ -24,13 +21,6 @@ jobs:
       # 최신 소스 코드 체크아웃
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # Python 3.11 세팅 및 pip 패키지 캐싱
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
 
       # 도커 이미지 레이어 캐싱 기능을 활용하기 위한 Buildx 엔진 설정
       - name: Set up Docker Buildx
