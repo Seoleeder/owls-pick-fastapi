@@ -7,6 +7,7 @@ on:
     paths:
       - '**.py'
       - 'requirements.txt'
+      - '**.toml'
       - 'Dockerfile'
       - '.github/workflows/deploy-fastapi.yaml'
       - 'config.toml'
