@@ -8,7 +8,7 @@ on:
       - '**.py'
       - 'requirements.txt'
       - 'Dockerfile'
-      - '.github/workflows/deploy-fastapi.yml'
+      - '.github/workflows/deploy-fastapi.yaml'
       - 'config.toml'
       - '**.json'
       - '**.md'
