@@ -1,0 +1,71 @@
+name: FastAPI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    # 핵심 소스 코드 및 인프라 설정 파일 변경 시에만 파이프라인 동작 제한
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-fastapi.yml'
+      - 'config.toml'
+      - '**.json'
+      - '**.md'
+      - '!README.md'
+
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 최신 소스 코드 체크아웃
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Python 3.11 세팅 및 pip 패키지 캐싱
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 도커 이미지 레이어 캐싱 기능을 활용하기 위한 Buildx 엔진 설정
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Docker Hub 세션 인증
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Docker 이미지 빌드 및 푸시 (캐시 적용)
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/owls-pick-fastapi:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # AWS EC2 원격 접속 및 새 컨테이너 배포
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd ~/owls-pick
+            
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/owls-pick-fastapi:latest
+            
+            docker compose -f docker-compose.yaml -f docker-compose-prod.yaml up -d --force-recreate owls-pick-fastapi
+            
+            # 미사용 도커 리소스 일괄 정리
+            docker system prune -af
