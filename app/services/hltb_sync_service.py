@@ -15,8 +15,8 @@ class HltbSyncService:
         self.semaphore_limit = int(os.getenv("HLTB_SEMAPHORE_LIMIT", "10"))
         self.semaphore = asyncio.Semaphore(self.semaphore_limit)
         
-        logger.info(f"[HLTB Scraper Engine] Initialized with Semaphore limit: {self.semaphore_limit}")
-
+        logger.info(f"[HLTB-Sync] Initialized with Semaphore limit: {self.semaphore_limit}")
+        
     @staticmethod
     def _normalize_hours(hours: float) -> float | None:
         """
@@ -34,7 +34,7 @@ class HltbSyncService:
         # 설정된 세마포어 내에서만 스크래핑 동시 실행 허용
         async with self.semaphore:
             try:
-                logger.info(f"[HLTB Scraper] Searching playtime for: {game_name}")
+                logger.debug(f"[HLTB-Sync] Searching playtime for: {game_name}")
                 
                 # 대량 병렬 요청 시 대상 서버 부하 및 봇 탐지 우회를 위한 최소 지연 시간
                 await asyncio.sleep(0.5)
@@ -44,13 +44,13 @@ class HltbSyncService:
 
                 # 검색된 게임 데이터가 없을 경우 예외 처리 (NOT_FOUND)
                 if not results:
-                    logger.info(f"[HLTB Scraper] No results found for: {game_name}")
+                    logger.debug(f"[HLTB-Sync] No results found for: {game_name}")
                     return HltbSyncResponse(status=SyncStatus.NOT_FOUND)
 
                 # 다수의 결과 중 원본 검색어와 유사도(Similarity)가 가장 높은 단일 데이터 추출
                 best_match: HowLongToBeatEntry = max(results, key=lambda element: element.similarity)
-                logger.info(f"[HLTB Scraper] Best match found: {best_match.game_name} (Similarity: {best_match.similarity})")
-
+                logger.debug(f"[HLTB-Sync] Best match found: {best_match.game_name} (Similarity: {best_match.similarity})")
+                
                 # 정규화 진행
                 normalized_story = self._normalize_hours(best_match.main_story)
                 normalized_extra = self._normalize_hours(best_match.main_extra)
@@ -58,7 +58,7 @@ class HltbSyncService:
 
                 # 유효한 플레이타임 데이터가 없는 경우 (NO_DATA)
                 if normalized_story is None and normalized_extra is None and normalized_completionist is None:
-                    logger.info(f"[HLTB Scraper] Game found, but no playtime data: '{best_match.game_name}'")
+                    logger.debug(f"[HLTB-Sync] Game found, but no playtime data: '{best_match.game_name}'")
                     return HltbSyncResponse(status=SyncStatus.NO_DATA)
 
                 # 추출된 데이터를 응답 DTO 규격에 맞춰 매핑 후 반환 (SUCCESS)
@@ -70,5 +70,5 @@ class HltbSyncService:
                 )
             except Exception as e:
                 # 스크래핑 중 발생하는 예외(네트워크 타임아웃, 접속 차단 등) 방어 및 상태 반환
-                logger.error(f"[HLTB Scraper] Failed to scrape {game_name}: {str(e)}")
+                logger.error(f"[HLTB-Sync] Failed to scrape - Game: {game_name} | Error: {str(e)}")
                 return HltbSyncResponse(status=SyncStatus.FAILED)

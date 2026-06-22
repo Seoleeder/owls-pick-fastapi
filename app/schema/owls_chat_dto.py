@@ -35,3 +35,15 @@ class RagGenerationResponse(CamelModel):
     RAG 기반 최종 답변 생성 응답 DTO
     """
     reply: str
+    
+class TitleGenerationRequest(CamelModel):
+    """
+    세션 제목 자동 요약 요청 DTO
+    """
+    user_message: str
+
+class TitleGenerationResponse(CamelModel):
+    """
+    세션 제목 자동 요약 응답 DTO
+    """
+    title: str

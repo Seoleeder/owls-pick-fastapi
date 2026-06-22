@@ -44,7 +44,7 @@ class ReviewSummaryService:
         # API 과부하 방지를 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(self.semaphore_limit)
 
-        logger.info(f"[Review Summary Engine] Initialized (Model: {self.model_name})")
+        logger.info(f"[GenAI-Review Summary] Initialized (Model: {self.model_name})")
 
     async def summarize_reviews(self, request: ReviewSummaryRequest, retries: int = 2) -> ReviewSummaryResponse:
         """
@@ -78,13 +78,13 @@ class ReviewSummaryService:
 
                 # 응답 데이터 누락 검증 (구글 측 차단 또는 빈 응답)
                 if not response.candidates or not response.text:
-                    logger.warning(f"[Game ID: {request.game_id}] Blocked by Google Safety Filter. Returning {SUMMARY_FAILED_FLAG} flag.")
+                    logger.warning(f"[GenAI-Review Summary] Blocked by Google Safety Filter. Returning {SUMMARY_FAILED_FLAG} flag - GameId: {request.game_id}")
                     return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
 
                 # 글자 수 제한 또는 안전 필터에 의한 비정상 종료 검증
                 finish_reason = response.candidates[0].finish_reason
                 if finish_reason and finish_reason.name != "STOP":
-                    logger.warning(f"[Game ID: {request.game_id}] Aborted by filter (Reason: {finish_reason.name}). Returning {SUMMARY_FAILED_FLAG} flag.")
+                    logger.warning(f"[GenAI-Review Summary] Aborted by filter (Reason: {finish_reason.name}). Returning {SUMMARY_FAILED_FLAG} flag - GameId: {request.game_id}")
                     return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
                 # 정상 응답 시 JSON 파싱 및 DTO 매핑
                 result_json = json.loads(response.text)
@@ -94,11 +94,10 @@ class ReviewSummaryService:
                 # 네트워크 오류 등 발생 시 지수 백오프(Exponential Backoff) 적용
                 if attempt < retries - 1:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[Game ID: {request.game_id}] API Hiccup, retrying in {sleep_time}s... ({str(e)})")
+                    logger.warning(f"[GenAI-Review Summary] API Hiccup, retrying in {sleep_time}s... GameId: {request.game_id} ({str(e)})")
                     await asyncio.sleep(sleep_time)
                     continue
                 
                 # 최대 재시도 횟수 초과 시 최종 실패 로깅
-                logger.error(f"[Review Summary Failed] Exhausted retries for Game ID {request.game_id}. Error: {str(e)}")
-                
+                logger.error(f"[GenAI-Review] Exhausted retries. Review Summary Failed - GameId: {request.game_id} | Error: {str(e)}")
                 raise e
