@@ -7,9 +7,12 @@ on:
     paths:
       - '**.py'
       - 'requirements.txt'
-      - '**.toml'
       - 'Dockerfile'
-      - '.github/workflows/deploy-fastapi.yml'
+      - '.github/workflows/deploy-fastapi.yaml'
+      - 'config.toml'
+      - '**.json'
+      - '**.md'
+      - '!README.md'
 
 
 jobs:
