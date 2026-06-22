@@ -1,0 +1,17 @@
+{
+    "type": "object",
+    "properties": {
+        "localization_results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "eng_name": {"type": "string"},
+                    "kor_name": {"type": "string"}
+                },
+                "required": ["engName", "korName"]
+            }
+        }
+    },
+    "required": ["localization_results"]
+}
