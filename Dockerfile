@@ -15,8 +15,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # 패키지 의존성 명세서 복사
 COPY requirements.txt .
 
-# 파이썬 패키지 설치 (캐시 미생성)
-RUN pip install --no-cache-dir -r requirements.txt
+# BuildKit 캐시 마운트를 적용하여 파이썬 패키지 설치
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # ==========================================
 # 2. 운영 런타임 스테이지
