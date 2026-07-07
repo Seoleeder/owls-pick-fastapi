@@ -4,7 +4,7 @@ import traceback
 from typing import List
 from fastapi import APIRouter, HTTPException
 
-from app.schema.embedding_dto import EmbeddingBatchRequest, EmbeddingBatchResponse
+from app.schema.dto.embedding_dto import EmbeddingBatchRequest, EmbeddingBatchResponse
 from app.services.embedding_service import EmbeddingService
 from app.core.logger import setup_logger
 

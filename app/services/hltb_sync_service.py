@@ -4,7 +4,7 @@ import os
 import asyncio
 from howlongtobeatpy import HowLongToBeat, HowLongToBeatEntry
 
-from app.schema.hltb_dto import HltbSyncResponse, SyncStatus
+from app.schema.dto.hltb_dto import HltbSyncResponse, SyncStatus
 from app.core.logger import setup_logger
 
 logger = setup_logger(__name__)

@@ -1,5 +1,4 @@
-from google.genai import types
-from app.core.gemini_config import SAFETY_SETTINGS_BLOCK_NONE
+#app\services\factories\review_config_factory.py
 
 class ReviewConfigFactory:
     """
@@ -7,12 +6,10 @@ class ReviewConfigFactory:
     """
     
     @staticmethod
-    def create_config(
+    def build_dynamic_instruction(
         review_score: int,
-        base_instruction: str,
-        response_schema: dict,
-        temperature: float
-    ) -> types.GenerateContentConfig:
+        system_instruction: str
+    ) -> str:
         
         # 평가 분포별 요약 가이드라인 설정
         dynamic_rule = f"\n\n[데이터 요약 기준]\n스팀 공식 평가 지표 등급: {review_score}\n\n[작성 지침]\n"
@@ -50,12 +47,6 @@ class ReviewConfigFactory:
             # 0 또는 예외값 (평가 없음 등)
             dynamic_rule += "데이터에 나타난 유저들의 반응을 편견 없이 있는 그대로 객관적으로 요약할 것."
 
-        # 최종 설정 객체 빌드
-        return types.GenerateContentConfig(
-            system_instruction=base_instruction + dynamic_rule,
-            temperature=temperature,
-            response_mime_type="application/json",
-            response_schema=response_schema, 
-            safety_settings=SAFETY_SETTINGS_BLOCK_NONE
-        )
+        # 최종 시스템 지시문 문자열 반환
+        return system_instruction + dynamic_rule
         
