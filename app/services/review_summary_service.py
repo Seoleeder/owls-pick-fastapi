@@ -1,103 +1,126 @@
 #app\services\review_summary_service.py
 
 import os
-import json
 import asyncio
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 
-from app.schema.review_summary_dto import ReviewSummaryRequest, ReviewSummaryResponse
-from app.services.factories.review_config_factory import ReviewConfigFactory
 from app.core.logger import setup_logger
-from app.utils.file_util import load_prompt_text, load_json_schema
+from app.utils.file_util import load_prompt_text
+
+from app.schema.enums.genai_fail_reason import GenaiFailReason
+from app.services.factories.review_config_factory import ReviewConfigFactory
+from app.schema.dto.review_summary_dto import ReviewSummaryRequest, ReviewSummaryResponse
+from app.schema.genai.review_summary_genai_schema import ReviewSummaryResponseSchema
 
 logger = setup_logger(__name__)
-
-# 리뷰 요약 실패시 마킹
-SUMMARY_FAILED_FLAG = "SUMMARY_GENERATION_FAILED"
 
 class ReviewSummaryService:
     def __init__(self):
         
         # 리뷰 요약 전용 환경 변수 로드
-        self.model_name = os.getenv("REVIEW_MODEL_NAME", "gemini-2.5-flash")
+        self.model_name = os.getenv("REVIEW_MODEL_NAME", "gpt-5.4-mini")
         self.temperature = float(os.getenv("REVIEW_TEMPERATURE", "0.35")) 
-
-        # 리뷰 세마포어 수 로드 (Rate Limit 방어)
         self.semaphore_limit = int(os.getenv("REVIEW_SEMAPHORE_LIMIT", "5"))
 
-        # Vertex AI 인프라 정보 로드
-        self.project_id = os.getenv("GCP_PROJECT_ID")
-        self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
+        # 시스템 프롬프트 로드
+        self.system_instruction = load_prompt_text("review_summary_instruction.md")
 
-        # 2. 시스템 프롬프트 및 응답 스키마(JSON) 로드
-        self.base_instruction = load_prompt_text("review_summary_instruction.md")
-        self.response_schema = load_json_schema("review_summary_schema.json")
-
-        # Vertex AI 클라이언트 초기화
-        self.client = genai.Client(
-            vertexai=True,
-            project=self.project_id,
-            location=self.location
+       # 비동기 OpenAI 클라이언트 초기화
+        self.client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY")
         )
 
-        # API 과부하 방지를 위한 동시성 제어
+        # API Rate Limit 방어 및 서버 과부하 방지를 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(self.semaphore_limit)
 
-        logger.info(f"[GenAI-Review Summary] Initialized (Model: {self.model_name})")
+        logger.info(f"[GenAI-Review Summary] Initialized with AsyncOpenAI SDK (Model: {self.model_name})")
 
     async def summarize_reviews(self, request: ReviewSummaryRequest, retries: int = 2) -> ReviewSummaryResponse:
         """
-        리뷰 요약 파이프라인 실행 (핵심 요약 및 긍/부정 키워드 추출)
+        단일 게임 리뷰 요약 파이프라인.
+        유저 리뷰 데이터를 분석하여 핵심 요약 텍스트 및 긍/부정 키워드를 추출함.
         """
+        # 불필요한 API 호출 방지를 위한 데이터 조기 검증
         if not request.review_texts:
-            return ReviewSummaryResponse()
-
-        # LLM 컨텍스트 주입을 위한 리뷰 텍스트 병합 
-        joined_reviews = "\n---\n".join(request.review_texts)
-        prompt = f"다음은 게임 ID {request.game_id}의 유저 리뷰들입니다. 이를 바탕으로 요약과 키워드를 추출해주세요.\n\n<Reviews>\n{joined_reviews}\n</Reviews>"
+            logger.debug(f"[GenAI-Review Summary] Insufficient data. Skipping - GameId: {request.game_id}")
+            return self._build_fallback_result(GenaiFailReason.INSUFFICIENT_DATA)
         
         # 실제 데이터 분포(긍/부정 비율)에 따른 동적 설정 빌드
-        dynamic_config = ReviewConfigFactory.create_config(
+        # 팩토리를 통해 리뷰 점수가 반영된 동적 시스템 지시문 생성
+        dynamic_instruction = ReviewConfigFactory.build_dynamic_instruction(
             review_score=request.review_score,
-            base_instruction=self.base_instruction,
-            response_schema=self.response_schema,
-            temperature=self.temperature
+            base_instruction=self.system_instruction
         )
 
-        # 일시적 네트워크 오류 대비 재시도 루프
+        # LLM 컨텍스트 주입을 위한 유저 리뷰 텍스트 병합 및 프롬프트 구성
+        joined_reviews = "\n---\n".join(request.review_texts)
+        prompt = f"다음은 게임 ID {request.game_id}의 스팀 리뷰입니다. 이를 바탕으로 요약과 키워드를 추출해주세요.\n\n<Reviews>\n{joined_reviews}\n</Reviews>"
+    
+
+        # 네트워크 지연 및 API 일시 오류 대응을 위한 재시도 루프
         for attempt in range(retries):
             try:
-                # Semaphore를 활용한 커넥션 풀 제어
                 async with self.semaphore:
-                    response = await self.client.aio.models.generate_content(
+                    # OpenAI API 호출 (Structured Outputs 적용)
+                    response = await self.client.responses.parse(
                         model=self.model_name,
-                        contents=prompt,
-                        config=dynamic_config
+                        input=[
+                            {"role": "developer", "content": dynamic_instruction},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=self.temperature,
+                        text_format=ReviewSummaryResponseSchema
                     )
 
-                # 응답 데이터 누락 검증 (구글 측 차단 또는 빈 응답)
-                if not response.candidates or not response.text:
-                    logger.warning(f"[GenAI-Review Summary] Blocked by Google Safety Filter. Returning {SUMMARY_FAILED_FLAG} flag - GameId: {request.game_id}")
-                    return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
+                parsed_data = None
 
-                # 글자 수 제한 또는 안전 필터에 의한 비정상 종료 검증
-                finish_reason = response.candidates[0].finish_reason
-                if finish_reason and finish_reason.name != "STOP":
-                    logger.warning(f"[GenAI-Review Summary] Aborted by filter (Reason: {finish_reason.name}). Returning {SUMMARY_FAILED_FLAG} flag - GameId: {request.game_id}")
-                    return ReviewSummaryResponse(summary_text=SUMMARY_FAILED_FLAG)
-                # 정상 응답 시 JSON 파싱 및 DTO 매핑
-                result_json = json.loads(response.text)
-                return ReviewSummaryResponse(**result_json)
+                # 응답 배열 순회 및 파싱 결과 추출
+                for output in response.output:
+                    if output.type != "message":
+                        continue
+                    
+                    for item in output.content:
+                        # 모델 안전 정책 위반으로 인한 응답 거절 처리
+                        if item.type == "refusal":
+                            logger.warning(f"[GenAI-Review Summary] Refused by Safety Filter - GameId: {request.game_id}")
+                            return self._build_fallback_result(GenaiFailReason.SAFETY_FILTER_REJECTED)
+                        
+                        # 파싱된 Pydantic 객체 추출
+                        if getattr(item, "parsed", None):
+                            parsed_data = item.parsed
+
+                # 파싱 결과 누락 시 예외 로그 기록 후 실패 처리
+                if not parsed_data:
+                    logger.warning(f"[GenAI-Review Summary] No valid parsed content returned - GameId: {request.game_id}")
+                    return self._build_fallback_result(GenaiFailReason.INVALID_RESPONSE)
+
+                # 정상 파싱 성공 시 DTO 매핑 후 반환
+                return ReviewSummaryResponse(
+                    summary_text=parsed_data.summary_text,
+                    positive_keywords=parsed_data.positive_keywords,
+                    negative_keywords=parsed_data.negative_keywords,
+                    error_reason=None
+                )
 
             except Exception as e:
-                # 네트워크 오류 등 발생 시 지수 백오프(Exponential Backoff) 적용
+                # 일시적 오류 발생 시 점진적 대기 후 재시도
                 if attempt < retries - 1:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[GenAI-Review Summary] API Hiccup, retrying in {sleep_time}s... GameId: {request.game_id} ({str(e)})")
+                    logger.warning(f"[GenAI-Review Summary] API Error, retrying {attempt + 1}/{retries}... GameId: {request.game_id} ({str(e)})")
                     await asyncio.sleep(sleep_time)
                     continue
                 
-                # 최대 재시도 횟수 초과 시 최종 실패 로깅
-                logger.error(f"[GenAI-Review] Exhausted retries. Review Summary Failed - GameId: {request.game_id} | Error: {str(e)}")
-                raise e
+                # 설정된 재시도 횟수 초과 시 최종 실패 로깅 및 에러 반환
+                logger.error(f"[GenAI-Review Summary] Final Failure - GameId: {request.game_id} | Error: {str(e)}")
+                return self._build_fallback_result(GenaiFailReason.NETWORK_ERROR)
+    
+    def _build_fallback_result(self, reason: GenaiFailReason) -> ReviewSummaryResponse:
+        """
+        실패 건에 대한 에러 응답 객체 생성
+        """
+        return ReviewSummaryResponse(
+            summary_text=None,
+            positive_keywords=[],
+            negative_keywords=[],
+            error_reason=reason
+        )

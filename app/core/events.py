@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Starting up Owl's Pick AI Microservice...")
     
-    # 환경변수 로드 및 Gemini API 초기화
+    # 환경변수 로드 및 OpenAI API 초기화
     init_config()
     
     yield 

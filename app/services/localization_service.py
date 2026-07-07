@@ -1,138 +1,126 @@
 #app\services\localization_service.py
 
 import os
-import json
 import asyncio
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 
-from app.schema.localization_dto import GameItem, LocalizationResult
 from app.core.logger import setup_logger
-from app.core.gemini_config import SAFETY_SETTINGS_BLOCK_NONE
+from app.utils.file_util import load_prompt_text
 
-from app.utils.file_util import load_prompt_text, load_json_schema
+from app.schema.enums.genai_fail_reason import GenaiFailReason
+from app.schema.dto.localization_dto import GameItem, LocalizationResult
+from app.schema.genai.localization_genai_schema import LocalizationResponseSchema
 
 logger = setup_logger(__name__)
 
-FAILED_MARK = "LOCALIZATION_FAILED"
-
 class LocalizationService:
     def __init__(self):
-        # 번역 전용 환경 변수 로드
-        self.model_name = os.getenv("Localization_MODEL_NAME", "gemini-2.5-flash")
-        self.temperature = float(os.getenv("Localization_TEMPERATURE", "0.2"))
+        # 한글화 전용 환경 변수 로드
+        self.model_name = os.getenv("LOCALIZATION_MODEL_NAME", "gpt-5.4-mini")
+        self.temperature = float(os.getenv("LOCALIZATION_TEMPERATURE", "0.2"))
 
-        # 리소스 파일 (프롬프트, 스키마) 로드 
-        system_instruction = load_prompt_text("localization_instruction.md")
-        response_schema = load_json_schema("localization_schema.json")
-
-        # Gemini 클라이언트 초기화
-        self.project_id = os.getenv("GCP_PROJECT_ID", "owls-pick-2026")
-        self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
+         
+        self.system_instruction = load_prompt_text("localization_instruction.md")
         
-        self.client = genai.Client(
-            vertexai=True,
-            project=self.project_id,
-            location=self.location
+        # 비동기 OpenAI 클라이언트 초기화
+        self.client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY")
         )
         
-        # 모델 생성 옵션(지침, 포맷, 안전 필터) 설정
-        self.config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=self.temperature,
-            response_mime_type="application/json",
-            response_schema=response_schema,
-            safety_settings = SAFETY_SETTINGS_BLOCK_NONE
-        )
-
-        # 동시성 제어 (Rate Limit 방어를 위해 최대 50개의 코루틴만 API 동시 호출 허용)
+        # API Rate Limit 방어 및 서버 과부하 방지를 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(50)
         
-        logger.info(f"[Localization] Initialized with modern google-genai SDK (Model: {self.model_name})")
-
+        logger.info(f"[Localization] Initialized with AsyncOpenAI SDK (Model: {self.model_name})")
+        
     async def localize_task (self, game: GameItem, retries: int = 2) -> LocalizationResult:
         """
-        단일 게임 데이터의 한글화(Localization) 프로세스
+        단일 게임 데이터 한글화 프로세스
         """
-        # 원본 데이터(설명, 스토리라인) 부재 시 조기 반환
+        # 불필요한 API 호출 방지를 위한 데이터 조기 검증
         if not game.description and not game.storyline:
-            return LocalizationResult(game_id=game.game_id, description_ko=None, storyline_ko=None)
+            logger.debug(f"[Localization] Insufficient data. Skipping - GameId: {game.game_id}")
+            return LocalizationResult(game.game_id, GenaiFailReason.INSUFFICIENT_DATA)
         
         # 필드별 유효 데이터 존재 여부 검증
         has_desc = bool(game.description and game.description.strip())
         has_story = bool(game.storyline and game.storyline.strip())
             
-        # 유효한 데이터만 추출하여 프롬프트 컨텍스트 구성
+        # 유효한 데이터만 추출하여 API 요청 컨텍스트 구성
         prompt_parts = []
-        if game.description and game.description.strip():
+        if has_desc:
             prompt_parts.append(f"<Description>\n{game.description}\n</Description>")
-        if game.storyline and game.storyline.strip():
+        if has_story:
             prompt_parts.append(f"<Storyline>\n{game.storyline}\n</Storyline>")
         
-        prompt = "\n\n".join(prompt_parts)    
+        user_prompt = "\n\n".join(prompt_parts) 
         
-        # 일시적인 네트워크 오류 등을 대비한 API 호출 및 재시도 루프
+        # 네트워크 지연 및 API 일시 오류 대응을 위한 재시도 루프
         for attempt in range(retries):
             try:
-                # Semaphore를 획득하여 동시 API 호출 수 통제
+                # 동시성 한도 내에서만 API 요청 실행
                 async with self.semaphore:  
-                    response = await self.client.aio.models.generate_content(
+                    # OpenAI API 호출 (Structured Outputs 적용)
+                    response = await self.client.responses.parse(
                         model=self.model_name,
-                        contents=prompt,
-                        config=self.config
+                        input=[
+                            {"role": "developer", "content": self.system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=self.temperature,
+                        text_format=LocalizationResponseSchema
                     )
                 
-                # API 차단 또는 빈 응답 발생 시 즉시 실패 처리
-                if not response.candidates or not response.text:
-                    logger.warning(f"[Localization] Blocked by Google Safety Filter (No content returned). Skipping - GameId: {game.game_id}")
-                    return self._build_fallback_result(game.game_id, has_desc, has_story)
-
-                # 정상 종료 외 모든 케이스는 불완전 응답으로 간주하여 즉시 실패 처리
-                finish_reason = response.candidates[0].finish_reason
-                if finish_reason and finish_reason.name != "STOP":
-                    logger.warning(f"[Localization] Aborted by Gemini (Reason: {finish_reason.name}). Skipping - GameId: {game.game_id}")
-                    return self._build_fallback_result(game.game_id, has_desc, has_story)
+                parsed_data = None
                 
-                # 응답 JSON 파싱 및 결과 매핑
-                result_json = json.loads(response.text)
-            
-                # 원본을 주지 않았다면(has_desc/has_story == False), 무조건 None 처리
-                final_desc_ko = result_json.get("description_ko") if has_desc else None
-                final_story_ko = result_json.get("storyline_ko") if has_story else None
-    
+                # 응답 배열 순회 및 파싱 결과 추출
+                for output in response.output:
+                    if output.type != "message":
+                        continue
+                    
+                    for item in output.content:
+                        # 모델 안전 정책 위반으로 인한 응답 거절
+                        if item.type == "refusal":
+                            logger.warning(f"[Localization] Refused by Safety Filter: {item.refusal} - GameId: {game.game_id}")
+                            return self._build_fallback_result(game.game_id, GenaiFailReason.SAFETY_FILTER_REJECTED)
+                        
+                        # 파싱된 Pydantic 객체 추출
+                        if getattr(item, "parsed", None):
+                            parsed_data = item.parsed
+
+                # 파싱 결과 누락 시 예외 로그 기록 후 우회 처리
+                if not parsed_data:
+                     logger.warning(f"[Localization] No valid parsed content returned - GameId: {game.game_id}")
+                     return self._build_fallback_result(game.game_id, GenaiFailReason.INVALID_RESPONSE)   
+
                 return LocalizationResult(
                     game_id=game.game_id,
-                    description_ko=final_desc_ko,
-                    storyline_ko=final_story_ko
+                    description_ko=parsed_data.description_ko if has_desc else None,
+                    storyline_ko=parsed_data.storyline_ko if has_story else None
                 )
-            except Exception as e:
                 
-                # 일시적 오류 시 대기 시간 점진적 증가 후 재시도
+            except Exception as e:
+                # 일시적 오류 발생 시 점진적 대기 후 재시도
                 if attempt < retries - 1:
                     sleep_time = (attempt + 1) * 2
-                    logger.warning(f"[Localization] API Hiccup, retrying... GameId: {game.game_id} ({str(e)})")
+                    logger.warning(f"[Localization] API Error, retrying {attempt + 1}/{retries}... GameId: {game.game_id} ({str(e)})")
                     await asyncio.sleep(sleep_time)
                     continue
                 
-                # 최대 재시도 횟수 초과 시 최종 실패 처리
+                # 설정된 재시도 횟수 초과 시 최종 실패 처리
                 logger.error(f"[Localization] Final Failure - GameId: {game.game_id} | Error: {str(e)}")
-                
-                return self._build_fallback_result(game.game_id, has_desc, has_story)
-
+                return self._build_fallback_result(game.game_id, GenaiFailReason.NETWORK_ERROR)
 
     async def process_bulk_localizations(self, games: list[GameItem]) -> list[LocalizationResult]:
         """
         대량의 게임 데이터 비동기 병렬 한글화 파이프라인
         """
         total_count = len(games)
-        logger.debug(f"[Localization] Starting async concurrent localization for {len(games)} items.")
+        logger.debug(f"[Localization] Starting async concurrent localization for {total_count} items.")
         
-        # 개별 게임 데이터를 비동기 작업 단위(Coroutine) 리스트로 변환
-        # 실행 대기 상태의 코루틴 객체들을 생성하여 배치(Batch) 준비
+        # 각 게임 데이터를 독립적인 비동기 태스크로 변환
         tasks = [self.localize_task(game) for game in games]
         
-        # 모든 코루틴을 이벤트 루프에 등록하여 병렬 실행 및 결과 집계
-        # await: 모든 비동기 작업이 완료될 때까지 대기하는 동기화 포인트(Barrier) 역할
+        # 태스크 병렬 실행 및 결과 취합
         results = await asyncio.gather(*tasks)
         
         logger.debug(f"[Localization] Localization completed for {total_count} items.")
@@ -140,12 +128,13 @@ class LocalizationService:
         return list(results)
     
     
-    def _build_fallback_result(self, game_id: int, has_desc: bool, has_story: bool) -> LocalizationResult:
+    def _build_fallback_result(self, game_id: int, reason: GenaiFailReason) -> LocalizationResult:
         """
-        실패 상태(FAILED_MARK) DTO 생성 팩토리 메서드
+        실패 건에 대한 에러 응답 객체 생성
         """
         return LocalizationResult(
             game_id=game_id, 
-            description_ko=FAILED_MARK if has_desc else None, 
-            storyline_ko=FAILED_MARK if has_story else None
+            description_ko=None, 
+            storyline_ko=None,
+            error_reason=reason
         )

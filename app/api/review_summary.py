@@ -2,7 +2,7 @@
 
 import traceback
 from fastapi import APIRouter, HTTPException
-from app.schema.review_summary_dto import ReviewSummaryRequest, ReviewSummaryResponse
+from app.schema.dto.review_summary_dto import ReviewSummaryRequest, ReviewSummaryResponse
 from app.services.review_summary_service import ReviewSummaryService
 from app.core.logger import setup_logger
 

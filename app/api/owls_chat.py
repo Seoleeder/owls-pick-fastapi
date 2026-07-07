@@ -1,7 +1,9 @@
+# app\api\owls_chat.py
+
 import traceback
 from fastapi import APIRouter, HTTPException
 
-from app.schema.owls_chat_dto import (
+from app.schema.dto.owls_chat_dto import (
     QueryEmbeddingRequest, QueryEmbeddingResponse,
     RagGenerationRequest, RagGenerationResponse,
     TitleGenerationRequest, TitleGenerationResponse
