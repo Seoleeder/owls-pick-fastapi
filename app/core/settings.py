@@ -1,3 +1,5 @@
+#app\core\settings.py
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ==========================================
@@ -21,12 +23,21 @@ class Settings(BaseSettings):
     서버 리소스 및 API 동작 관련 정적 임계치 정의
     - 외부 config.toml 파일의 값을 읽어와 객체로 구조화
     """
+    
+    app_env: str = "local"
+    openai_api_key: str
+    
     review: ReviewSettings
     hltb: HltbSettings
     embedding: EmbeddingSettings
     
-    # TOML 파일 자동 매핑 지정
-    model_config = SettingsConfigDict(toml_file='config.toml')
+    # TOML 파일 자동 매핑 지정 및 로컬 환경 변수 통합 매핑
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        toml_file="config.toml",
+        extra="ignore"
+    )
 
 # 전역 참조용 설정 객체 생성
 settings = Settings()

@@ -1,7 +1,7 @@
 #app\schema\hltb_dto.py
 
 from enum import Enum
-from app.schema.base_dto import CamelModel
+from app.schema.dto.base_dto import CamelModel
 
 # ==========================================
 # [HLTB Sync Status Enum] 동기화 상태값

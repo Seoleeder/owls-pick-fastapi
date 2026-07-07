@@ -1,7 +1,7 @@
 import traceback
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schema.hltb_dto import HltbSyncResponse
+from app.schema.dto.hltb_dto import HltbSyncResponse
 from app.services.hltb_sync_service import HltbSyncService
 from app.core.logger import setup_logger
 

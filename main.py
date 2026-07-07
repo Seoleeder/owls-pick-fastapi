@@ -15,11 +15,13 @@ from app.core.cors import setup_cors
 from app.core.middleware import TraceIdMiddleware
 
 # API 라우터 
-from app.api import localization
-from app.api import review_summary
-from app.api import hltb
-from app.api import embedding
-from app.api import owls_chat
+from app.api import (
+    localization,
+    keyword_localization,
+    review_summary,
+    embedding,
+    owls_chat,
+    hltb)
 
 
 logger = setup_logger("main")
@@ -53,6 +55,12 @@ app.include_router(
     localization.router, 
     prefix="/api/localization", 
     tags=["Game Localization"]
+)
+
+app.include_router(
+    keyword_localization.router, 
+    prefix="/api/localization", 
+    tags=["Keyword Localization"]
 )
 
 app.include_router(

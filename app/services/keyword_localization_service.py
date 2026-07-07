@@ -3,149 +3,166 @@
 import os
 import json
 import asyncio
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 
-from app.schema.localization_dto import KeywordResult
 from app.core.logger import setup_logger
-from app.core.gemini_config import SAFETY_SETTINGS_BLOCK_NONE
-from app.utils.file_util import load_prompt_text, load_json_schema
+from app.utils.file_util import load_prompt_text
+
+from app.schema.enums.genai_fail_reason import GenaiFailReason
+from app.schema.dto.keyword_localization_dto import KeywordResult
+from app.schema.genai.keyword_genai_schema import BulkKeywordResponseSchema
+
 
 logger = setup_logger(__name__)
 
 class KeywordLocalizationService:
     def __init__(self):
-        # 환경 변수 로드 (키워드 매핑은 특히 일관성이 중요하므로 온도를 낮게 유지)
-        self.model_name = os.getenv("KEYWORD_MODEL_NAME", "gemini-2.5-flash")
+        # 키워드 한글화 전용 환경 변수 로드
+        self.model_name = os.getenv("KEYWORD_MODEL_NAME", "gpt-5.4-mini")
         self.temperature = float(os.getenv("KEYWORD_TEMPERATURE", "0.1"))
 
-        # 리소스 파일 로드 (시스템 지침, JSON 스키마)
-        system_instruction = load_prompt_text("keyword_instruction.md")
-        response_schema = load_json_schema("keyword_schema.json")
-
-        # Gemini 클라이언트 초기화
-        self.project_id = os.getenv("GCP_PROJECT_ID", "owls-pick-2026")
-        self.location = os.getenv("GCP_LOCATION", "asia-northeast3")
+        # 시스템 프롬프트 로드
+        self.system_instruction = load_prompt_text("keyword_instruction.md")
         
-        self.client = genai.Client(
-            vertexai=True,
-            project=self.project_id,
-            location=self.location
-        )
-        
-        # 모델 생성 옵션 설정 (JSON 응답 강제 및 안전 필터 해제)
-        self.config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=self.temperature,
-            response_mime_type="application/json",
-            response_schema=response_schema, 
-            safety_settings=SAFETY_SETTINGS_BLOCK_NONE
+        # 비동기 OpenAI 클라이언트 초기화
+        self.client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY")
         )
 
-        # 폴백 모드 발동 시 API Rate Limit(초당 요청 수) 초과를 방지하기 위한 동시성 제어
+        # API Rate Limit 방어 및 서버 과부하 방지를 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(50)
 
         logger.info(f"[KeywordLocalization] Initialized (Model: {self.model_name})")
 
     async def process_keyword_localization(self, keywords: list[str], retries: int = 2) -> list[KeywordResult]:
-        """
-        [메인 비즈니스 로직] 영문 키워드 배열의 한글화 파이프라인
-        - 1차: 벌크(대량) 처리 시도
-        - 2차: Safety Filter로 인한 실패 시, 개별 비동기 처리로 우회(Fallback)하여 가용성 극대화
-        """
-        
-        # 처리할 데이터가 없으면 조기 반환(Early Return)
-        if not keywords:
-            return []
-
-        # 벌크 처리를 위한 사용자 프롬프트 생성
-        prompt = f"다음 키워드들을 번역해 주세요:\n{json.dumps(keywords)}"
-
-        # --- [벌크 처리 루프] ---
-        # 네트워크 지연이나 일시적 API 오류에 대비한 재시도(Retry) 루프
-        for attempt in range(retries):
-            try:
-                response = await self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=self.config
-                )
-
-                # API 차단 또는 빈 응답 발생 검증
-                if not response.candidates or not response.text:
-                    raise ValueError("Blocked by Google")
-
-                # 글자 수 제한 또는 안전 필터에 의한 비정상 종료 검증
-                finish_reason = response.candidates[0].finish_reason
-                if finish_reason and finish_reason.name != "STOP":
-                    raise ValueError(f"Aborted (Reason: {finish_reason.name})")
-
-                # JSON 파싱 
-                result_json = json.loads(response.text)
-                parsed_list = result_json.get("localization_results", [])
-
-                # Pydantic 객체로 변환하여 반환
-                return [KeywordResult(**item) for item in parsed_list]
-
-            except Exception as e:
-                # 일시적인 네트워크 지연이나 500 계열 에러일 경우 지수 백오프(Exponential Backoff) 후 재시도
-                if attempt < retries - 1:
-                    sleep_time = (attempt + 1) * 2
-                    logger.warning(f"Bulk Keyword API Hiccup, retrying in {sleep_time}s... ({str(e)})")
-                    await asyncio.sleep(sleep_time)
-                    continue
-                
-                # 재시도를 모두 소진했다면, 특정 태그로 인한 차단일 확률이 높음
-                logger.error(f"[KeywordLocalization] Bulk Translation Failed. Exhausted retries. Triggering Individual Async Fallback. Error: {str(e)}")
-                
-        # --- [단건 비동기 폴백 (Fallback)] ---
-        # 벌크 처리가 최종 실패하여 루프를 빠져나왔을 때 실행
+            """
+            대량의 키워드 데이터 비동기 한글화 파이프라인.
+            벌크 처리 실패 시 개별 비동기 처리로 전환하여 가용성을 확보함.
+            """
             
-        logger.debug(f"[KeywordLocalization] Starting individual fallback for {len(keywords)} keywords...")
-        
-        # 각 키워드별로 독립적인 코루틴 생성
-        tasks = [self._localize_single_keyword(kw) for kw in keywords]
-        
-        # asyncio.gather를 통해 병렬로 동시 실행 후 결과 취합
-        results = await asyncio.gather(*tasks)
-        
-        return list(results)
-           
+            # 불필요한 API 호출 방지를 위한 데이터 조기 검증
+            if not keywords:
+                return []
+
+            # API 요청을 위한 사용자 프롬프트 구성
+            prompt = f"다음 키워드들을 번역해 주세요:\n{json.dumps(keywords, ensure_ascii=False)}"
+
+            # 네트워크 지연 및 API 일시 오류 대응을 위한 재시도 루프
+            for attempt in range(retries):
+                try:
+                    # OpenAI API 호출 및 파싱 결과 추출
+                    is_refused, parsed_data = await self._call_openai_api(prompt)
+
+                    # 파싱 결과 누락 및 거절 시 예외를 발생시켜 개별 단건 처리로 전환
+                    if is_refused or not parsed_data:
+                        raise ValueError("Refused by policy or Invalid Response")
+
+                    # 정상 파싱 완료 시 DTO 매핑 후 반환
+                    return [
+                        KeywordResult(
+                            eng_name=item.eng_name, 
+                            kor_name=item.kor_name, 
+                            error_reason=None
+                        ) 
+                        for item in parsed_data.localization_results
+                    ]
+
+                except Exception as e:
+                    # 일시적 오류 발생 시 점진적 대기 후 재시도
+                    if attempt < retries - 1:
+                        sleep_time = (attempt + 1) * 2
+                        logger.warning(f"[KeywordLocalization] Bulk API Error, retrying {attempt + 1}/{retries}... ({str(e)})")
+                        await asyncio.sleep(sleep_time)
+                        continue
+                    
+                    # 설정된 재시도 횟수 초과 시 예외 로그 기록
+                    logger.error(f"[KeywordLocalization] Bulk Translation Failed. Triggering Individual Processing. Error: {str(e)}")
+
+            # 벌크 처리 실패에 따른 개별 키워드 독립 비동기 태스크 생성
+            logger.debug(f"[KeywordLocalization] Starting individual processing for {len(keywords)} keywords.")
+            tasks = [self._localize_single_keyword(kw) for kw in keywords]
             
+            # 태스크 병렬 실행 및 결과 취합
+            results = await asyncio.gather(*tasks)
+            
+            return list(results)
+
     async def _localize_single_keyword(self, keyword: str) -> KeywordResult:
         """
-        [내부 헬퍼 로직] 폴백 시 단일 키워드를 한글화하는 로직. 예외 발생 시 원본 영문 키워드 반환
+        단일 키워드 한글화 프로세스. 
         """
         prompt = f"다음 키워드를 번역해 주세요:\n[\"{keyword}\"]"
         
         try:
-            # Semaphore를 통해 한 번에 실행되는 API 요청 수를 50개로 제한
+            # 동시성 한도 내에서만 API 요청 실행
             async with self.semaphore:
-                response = await self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=self.config
+                # OpenAI API 호출 및 파싱 결과 추출
+                is_refused, parsed_data = await self._call_openai_api(prompt)
+
+                # 모델 안전 정책 위반으로 인한 응답 거절 처리
+                if is_refused:
+                    logger.warning(f"[KeywordLocalization] Refused by Safety Filter: Keyword '{keyword}'")
+                    return self._build_fallback_result(keyword, GenaiFailReason.SAFETY_FILTER_REJECTED)
+
+                # 파싱 결과 누락 시 예외 로그 기록 후 실패 처리
+                if not parsed_data or not parsed_data.localization_results:
+                    logger.warning(f"[KeywordLocalization] No valid parsed content returned - Keyword: '{keyword}'")
+                    return self._build_fallback_result(keyword, GenaiFailReason.INVALID_RESPONSE)
+
+                # 정상 파싱 성공 시 번역된 키워드 반환
+                return KeywordResult(
+                    eng_name=parsed_data.localization_results[0].eng_name,
+                    kor_name=parsed_data.localization_results[0].kor_name,
+                    error_reason=None
                 )
 
-                if not response.candidates or not response.text:
-                    raise ValueError("Blocked by Google")
-
-                finish_reason = response.candidates[0].finish_reason
-                if finish_reason and finish_reason.name != "STOP":
-                    raise ValueError(f"Aborted ({finish_reason.name})")
-
-                result_json = json.loads(response.text)
-                parsed_list = result_json.get("localization_results", [])
-                
-                # 정상 파싱되었다면 번역된 결과 반환
-                if parsed_list:
-                    return KeywordResult(**parsed_list[0])
-                
-                # 구조가 맞지 않는 이상 응답 방어
-                return KeywordResult(eng_name=keyword, kor_name=keyword)
-
         except Exception as e:
+            # 통신 장애 등 예외 발생 시 영문 원본과 에러 상태 코드 반환
+            logger.warning(f"[KeywordLocalization] Individual API Error for '{keyword}'. Reason: {str(e)}")
+            return self._build_fallback_result(keyword, GenaiFailReason.NETWORK_ERROR)
+
+    async def _call_openai_api(self, prompt: str) -> tuple[bool, BulkKeywordResponseSchema | None]:
+        """
+        OpenAI API 요청 및 Structured Outputs 파싱 전담 헬퍼 메서드
+        """
+        
+        # OpenAI API 호출 (Structured Outputs 적용)
+        response = await self.client.responses.parse(
+            model=self.model_name,
+            input=[
+                {"role": "developer", "content": self.system_instruction},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=self.temperature,
+            text_format=BulkKeywordResponseSchema
+        )
+
+        parsed_data = None
+        is_refused = False
+
+        # 응답 배열 순회 및 파싱 결과 검증
+        for output in response.output:
+            if output.type != "message":
+                continue
             
-            # 필터링에 걸린 키워드이거나 개별 통신에 실패한 경우 영문 원본을 반환
-            logger.warning(f"[KeywordLocalization] Isolated Safety Block. Keyword '{keyword}' failed to translate. Returning original. Reason: {str(e)}")
-            return KeywordResult(eng_name=keyword, kor_name=keyword)
+            for item in output.content:
+                # 안전 정책 위반으로 인한 응답 거절 여부 검증
+                if item.type == "refusal":
+                    is_refused = True
+                    break
+                
+                # 파싱된 Pydantic 객체 추출
+                if getattr(item, "parsed", None):
+                    parsed_data = item.parsed
+
+        return is_refused, parsed_data
+                
+    def _build_fallback_result(self, keyword: str, reason: GenaiFailReason) -> KeywordResult:
+        """
+        실패 건에 대한 에러 응답 객체 생성
+        """
+        return KeywordResult(
+            eng_name=keyword, 
+            kor_name=keyword, 
+            error_reason=reason
+        )
