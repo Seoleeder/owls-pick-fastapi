@@ -13,7 +13,16 @@ load_dotenv()
 # LogRecord에 trace_id 속성을 동적으로 할당하는 커스텀 필터
 class TraceIdFilter(logging.Filter):
     def filter(self, record):
+        
+        # 분산 추적용 Trace ID 주입
         record.trace_id = trace_id_var.get()
+        
+        # 모니터링용 라벨 주입
+        record.tags = {
+            "application": "owls-pick-fastapi",
+            "level": record.levelname
+        }
+        
         return True
 
 def setup_logger(name: str) -> logging.Logger:
@@ -33,7 +42,7 @@ def setup_logger(name: str) -> logging.Logger:
         
         logger.setLevel(log_level)
         
-        # Trace ID 주입용 커스텀 필터 인스턴스 생성
+        # Trace ID 및 동적 태그 주입용 커스텀 필터 인스턴스 생성
         trace_filter = TraceIdFilter()
         
         # 로그 출력 포맷 지정 
@@ -56,7 +65,6 @@ def setup_logger(name: str) -> logging.Logger:
         
         loki_handler = LokiHandler(
             url=loki_url,
-            tags={"application": "owls-pick-fastapi"},  # AI 엔진 식별용 Label
             version="1",
         )
         loki_handler.setLevel(log_level)
