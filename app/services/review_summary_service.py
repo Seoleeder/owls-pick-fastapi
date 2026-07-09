@@ -49,7 +49,7 @@ class ReviewSummaryService:
         # 팩토리를 통해 리뷰 점수가 반영된 동적 시스템 지시문 생성
         dynamic_instruction = ReviewConfigFactory.build_dynamic_instruction(
             review_score=request.review_score,
-            base_instruction=self.system_instruction
+            system_instruction=self.system_instruction
         )
 
         # LLM 컨텍스트 주입을 위한 유저 리뷰 텍스트 병합 및 프롬프트 구성
