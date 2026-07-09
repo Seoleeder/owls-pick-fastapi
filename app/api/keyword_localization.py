@@ -1,5 +1,7 @@
+#app\api\keyword_localization.py
+
 import traceback
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.schema.dto.keyword_localization_dto import KeywordLocalizationRequest, BulkKeywordLocalizationResponse
 from app.services.keyword_localization_service import KeywordLocalizationService
 from app.core.logger import setup_logger
@@ -7,11 +9,17 @@ from app.core.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-# 서비스 인스턴스 싱글톤(Singleton) 생성
-keyword_service = KeywordLocalizationService()
+def get_keyword_localization_service() -> KeywordLocalizationService:
+    """
+    LocalizationService 의존성 주입(DI)용 팩토리 함수
+    """
+    return KeywordLocalizationService()
 
 @router.post("/keywords/bulk", response_model=BulkKeywordLocalizationResponse)
-async def localize_bulk_keywords(req: KeywordLocalizationRequest):
+async def localize_bulk_keywords(
+    req: KeywordLocalizationRequest,
+    service: KeywordLocalizationService = Depends(get_keyword_localization_service)
+    ):
     """
     대량 게임 키워드 한글화 API
     """
@@ -20,7 +28,7 @@ async def localize_bulk_keywords(req: KeywordLocalizationRequest):
     
     # 키워드 한글화 서비스 호출
     try:
-        results = await keyword_service.process_keyword_localization(req.keywords)
+        results = await service.process_keyword_localization(req.keywords)
         logger.info(f"Keyword Localization Completed: Returning {len(results)} results.")
         return BulkKeywordLocalizationResponse(localization_results=results)
         
