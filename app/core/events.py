@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import init_config
+from app.core.settings import get_settings
 from app.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -16,6 +17,9 @@ async def lifespan(app: FastAPI):
     
     # 환경변수 로드 및 OpenAI API 초기화
     init_config()
+    
+    # Pydantic Settings 객체 생성 및 메모리 캐싱
+    get_settings()
     
     yield 
     
