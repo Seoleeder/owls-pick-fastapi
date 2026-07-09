@@ -1,5 +1,7 @@
+#app\api\hltb.py
+
 import traceback
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from app.schema.dto.hltb_dto import HltbSyncResponse
 from app.services.hltb_sync_service import HltbSyncService
@@ -9,12 +11,17 @@ router = APIRouter()
 
 logger = setup_logger(__name__)
 
-# 서비스 인스턴스 싱글톤(Singleton) 생성
-hltb_service = HltbSyncService()
+def get_hltb_sync_service() -> HltbSyncService:
+    """
+    HltbSyncService 의존성 주입(DI)용 팩토리 함수
+    """
+    return HltbSyncService()
+
 
 @router.get("/scrape", response_model=HltbSyncResponse)
 async def scrape_hltb_playtime(
-    game_name: str = Query(..., description="검색할 게임의 영문 원본 타이틀")
+    game_name: str = Query(..., description="검색할 게임의 영문 원본 타이틀"),
+    service: HltbSyncService = Depends(get_hltb_sync_service)
 ):
     """
     HowLongToBeat 스크래핑 및 플레이타임 반환 API
@@ -23,7 +30,7 @@ async def scrape_hltb_playtime(
     
     try:
         # 플레이타임 스크래핑 서비스 호출
-        result = await hltb_service.scrape_playtime(game_name)
+        result = await service.scrape_playtime(game_name)
         
         logger.info(f"HLTB Scrape Completed for '{game_name}'. Status: {result.status}")
         return result
