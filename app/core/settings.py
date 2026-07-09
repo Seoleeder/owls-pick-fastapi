@@ -1,5 +1,6 @@
 #app\core\settings.py
 
+from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ==========================================
@@ -39,5 +40,9 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-# 전역 참조용 설정 객체 생성
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """
+    설정 객체를 지연 생성(Lazy Evaluation)하고 캐싱하는 함수.
+    """
+    return Settings()
