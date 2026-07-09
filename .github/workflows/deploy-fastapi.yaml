@@ -55,6 +55,8 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: |
             cd ~/owls-pick
+
+            git pull origin main
             
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/owls-pick-fastapi:latest
             
