@@ -1,7 +1,13 @@
 #app\core\settings.py
 
 from functools import lru_cache
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Tuple, Type
+from pydantic_settings import (
+    BaseSettings, 
+    SettingsConfigDict, 
+    PydanticBaseSettingsSource, 
+    TomlConfigSettingsSource
+)
 
 # ==========================================
 # 정적 인프라 설정 (TOML 파일 매핑)
@@ -39,6 +45,27 @@ class Settings(BaseSettings):
         toml_file="config.toml",
         extra="ignore"
     )
+    
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Pydantic 커스텀 설정 소스 주입
+        config.toml 데이터 매핑을 위한 TomlConfigSettingsSource 등록
+        """
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            TomlConfigSettingsSource(settings_cls),
+        )
 
 @lru_cache
 def get_settings() -> Settings:
