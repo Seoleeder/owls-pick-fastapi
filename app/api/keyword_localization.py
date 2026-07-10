@@ -1,6 +1,8 @@
 #app\api\keyword_localization.py
 
 import traceback
+from openai import AsyncOpenAI
+from app.core.dependencies import get_openai_client
 from fastapi import APIRouter, HTTPException, Depends
 from app.schema.dto.keyword_localization_dto import KeywordLocalizationRequest, BulkKeywordLocalizationResponse
 from app.services.keyword_localization_service import KeywordLocalizationService
@@ -9,11 +11,13 @@ from app.core.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_keyword_localization_service() -> KeywordLocalizationService:
+def get_keyword_localization_service(
+    client: AsyncOpenAI = Depends(get_openai_client)
+) -> KeywordLocalizationService:
     """
     LocalizationService 의존성 주입(DI)용 팩토리 함수
     """
-    return KeywordLocalizationService()
+    return KeywordLocalizationService(client=client)
 
 @router.post("/keywords/bulk", response_model=BulkKeywordLocalizationResponse)
 async def localize_bulk_keywords(

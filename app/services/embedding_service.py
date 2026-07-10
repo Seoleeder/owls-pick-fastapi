@@ -18,7 +18,11 @@ class EmbeddingService:
     Owls 챗봇 검색용 게임 메타데이터 임베딩 서비스
     """
     
-    def __init__(self):
+    def __init__(self, client: AsyncOpenAI):
+        
+        # 의존성 주입을 통해 전역 클라이언트 매핑
+        self.client = client
+        
         # 임베딩 전용 환경 변수 로드
         self.model_name = os.getenv("EMBEDDING_MODEL_NAME", "text-embedding-3-small")
         self.output_dimension = int(os.getenv("EMBEDDING_OUTPUT_DIMENSION", "768"))

@@ -1,6 +1,8 @@
 #app\api\review_summary.py
 
 import traceback
+from openai import AsyncOpenAI
+from app.core.dependencies import get_openai_client
 from fastapi import APIRouter, HTTPException, Depends
 from app.schema.dto.review_summary_dto import ReviewSummaryRequest, ReviewSummaryResponse
 from app.services.review_summary_service import ReviewSummaryService
@@ -9,11 +11,13 @@ from app.core.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_review_summary_service() -> ReviewSummaryService:
+def get_review_summary_service(
+    client: AsyncOpenAI = Depends(get_openai_client)
+) -> ReviewSummaryService:
     """
     ReviewSummaryService 의존성 주입(DI)용 팩토리 함수
     """
-    return ReviewSummaryService()
+    return ReviewSummaryService(client=client)
 
 @router.post("/reviews", response_model=ReviewSummaryResponse)
 async def summarize_game_reviews(

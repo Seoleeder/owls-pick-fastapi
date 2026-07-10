@@ -15,7 +15,10 @@ from app.schema.genai.review_summary_genai_schema import ReviewSummaryResponseSc
 logger = setup_logger(__name__)
 
 class ReviewSummaryService:
-    def __init__(self):
+    def __init__(self, client: AsyncOpenAI):
+        
+        # 의존성 주입을 통해 전역 클라이언트 매핑
+        self.client = client
         
         # 리뷰 요약 전용 환경 변수 로드
         self.model_name = os.getenv("REVIEW_MODEL_NAME", "gpt-5.4-mini")
@@ -61,15 +64,14 @@ class ReviewSummaryService:
         for attempt in range(retries):
             try:
                 async with self.semaphore:
-                    # OpenAI API 호출 (Structured Outputs 적용)
+                    # OpenAI API 호출 (Structured Outputs 파싱)
                     response = await self.client.responses.parse(
                         model=self.model_name,
-                        input=[
-                            {"role": "developer", "content": dynamic_instruction},
-                            {"role": "user", "content": prompt}
-                        ],
+                        instructions=dynamic_instruction,
+                        input=prompt,
                         temperature=self.temperature,
-                        text_format=ReviewSummaryResponseSchema
+                        text_format=ReviewSummaryResponseSchema,    # DTO 규격 강제
+                        store=False                                 # 단건 처리용 상태 저장 비활성화
                     )
 
                 parsed_data = None
