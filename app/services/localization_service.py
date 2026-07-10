@@ -14,18 +14,16 @@ from app.schema.genai.localization_genai_schema import LocalizationResponseSchem
 logger = setup_logger(__name__)
 
 class LocalizationService:
-    def __init__(self):
+    def __init__(self, client: AsyncOpenAI):
+        
+        # 의존성 주입을 통해 전역 클라이언트 매핑
+        self.client = client
+        
         # 한글화 전용 환경 변수 로드
         self.model_name = os.getenv("LOCALIZATION_MODEL_NAME", "gpt-5.4-mini")
         self.temperature = float(os.getenv("LOCALIZATION_TEMPERATURE", "0.2"))
 
-         
         self.system_instruction = load_prompt_text("localization_instruction.md")
-        
-        # 비동기 OpenAI 클라이언트 초기화
-        self.client = AsyncOpenAI(
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
         
         # API Rate Limit 방어 및 서버 과부하 방지를 위한 동시성 제어
         self.semaphore = asyncio.Semaphore(50)
@@ -62,12 +60,11 @@ class LocalizationService:
                     # OpenAI API 호출 (Structured Outputs 적용)
                     response = await self.client.responses.parse(
                         model=self.model_name,
-                        input=[
-                            {"role": "developer", "content": self.system_instruction},
-                            {"role": "user", "content": user_prompt}
-                        ],
+                        instructions=self.system_instruction,  
+                        input=user_prompt,                     
                         temperature=self.temperature,
-                        text_format=LocalizationResponseSchema
+                        text_format=LocalizationResponseSchema,     # DTO 규격 강제
+                        store=False                                 # 단건 처리용 상태 저장 비활성화
                     )
                 
                 parsed_data = None

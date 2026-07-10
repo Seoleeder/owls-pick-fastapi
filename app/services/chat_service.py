@@ -20,7 +20,9 @@ class ChatService:
     독립 검색어 추출, 벡터 임베딩, 최종 답변 및 세션 제목 생성 담당
     """
     
-    def __init__(self):
+    def __init__(self, client: AsyncOpenAI):
+        # 의존성 주입을 통해 전역 클라이언트 매핑
+        self.client = client
         
        # 모델 사양 환경 변수 로드
         self.chat_model = os.getenv("CHAT_MODEL_NAME", "gpt-5.4-mini") 
@@ -67,14 +69,13 @@ class ChatService:
             user_prompt = f"[대화 내역]\n{formatted_history}\n\n[사용자의 마지막 메시지]\n{request.user_message}"
             
             try:
-                # Developer Role에 재작성 지시문을 주입하여 독립 검색어 추출 강제
-                rewrite_response = await self.client.chat.completions.create(
+                # Responses API 호출 (구조화되지 않은 단순 텍스트 생성)
+                rewrite_response = await self.client.responses.create(
                     model=self.chat_model,
-                    messages=[
-                        {"role": "developer", "content": self.rewrite_instruction},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.1
+                    instructions=self.rewrite_instruction,
+                    input=user_prompt,
+                    temperature=0.1,
+                    store=False
                 )
                 
                 # 파싱 및 공백 제거 후 임베딩 대상 문자열 갱신
@@ -120,19 +121,25 @@ class ChatService:
         user_prompt = f"[Context]\n{formatted_context}\n\n[History]\n{formatted_history}\n\n[User Message]\n{request.user_message}"
 
         try:
-            # Structured Outputs를 적용하여 Pydantic 모델 규격의 반환을 강제함
-            response = await self.client.beta.chat.completions.parse(
+            # OpenAI API 호출 (Structured Outputs 파싱)
+            response = await self.client.responses.parse(
                 model=self.chat_model,
-                messages=[
-                    {"role": "developer", "content": self.system_instruction},
-                    {"role": "user", "content": user_prompt}
-                ],
+                instructions=self.system_instruction,
+                input=user_prompt,
                 temperature=self.chat_temperature,
-                response_format=RagGenerationResponse
+                text_format=RagGenerationResponse,    # DTO 규격 강제
+                store=False                                 # 단건 처리용 상태 저장 비활성화
             )
             
-            # SDK 내부에서 파싱된 Pydantic 객체 추출
-            parsed_data = response.choices[0].message.parsed
+            # 방어적 이중 루프 파싱
+            for output in response.output:
+                if output.type != "message":
+                    continue
+                for item in output.content:
+                    if item.type == "refusal":
+                        raise ValueError(f"Refused by Safety Filter: {item.refusal}")
+                    if getattr(item, "parsed", None):
+                        parsed_data = item.parsed
             
             if not parsed_data:
                 raise ValueError("Parsed data is missing from the RAG response.")
@@ -152,19 +159,27 @@ class ChatService:
             logger.debug(f"[GenAI-Chat] Starting Title Generation for message: {request.user_message}")
 
         try:
-            # Structured Outputs 강제 적용으로 파싱 에러 및 특수문자 반환 차단
-            response = await self.client.beta.chat.completions.parse(
+            # OpenAI API 호출 (Structured Outputs 파싱)
+            response = await self.client.responses.parse(
                 model=self.chat_model,
-                messages=[
-                    {"role": "developer", "content": self.title_system_instruction},
-                    {"role": "user", "content": request.user_message}
-                ],
+                instructions=self.title_system_instruction,
+                input=request.user_message,
                 temperature=self.title_temperature,
-                response_format=TitleGenerationResponse
+                text_format=TitleGenerationResponse,    # DTO 규격 강제
+                store=False                             # 단건 처리용 상태 저장 비활성화
             )
             
-            # SDK 내부에서 파싱된 Pydantic 객체 추출
-            parsed_data = response.choices[0].message.parsed
+            parsed_data = None
+            
+            # 방어적 이중 루프 파싱
+            for output in response.output:
+                if output.type != "message":
+                    continue
+                for item in output.content:
+                    if item.type == "refusal":
+                        raise ValueError(f"Refused by Safety Filter: {item.refusal}")
+                    if getattr(item, "parsed", None):
+                        parsed_data = item.parsed
             
             if not parsed_data:
                 raise ValueError("Parsed title data is missing from the response.")
