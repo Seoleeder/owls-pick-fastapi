@@ -1,6 +1,8 @@
 #app\api\embedding.py
 
 import traceback
+from openai import AsyncOpenAI
+from app.core.dependencies import get_openai_client
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.schema.dto.embedding_dto import EmbeddingBatchRequest, EmbeddingBatchResponse
@@ -10,11 +12,13 @@ from app.core.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_embedding_service() -> EmbeddingService:
+def get_embedding_service(
+    client: AsyncOpenAI = Depends(get_openai_client)
+) -> EmbeddingService:
     """
     EmbeddingService 의존성 주입(DI)용 팩토리 함수
     """
-    return EmbeddingService()
+    return EmbeddingService(client=client)
 
 @router.post("/batch", response_model=EmbeddingBatchResponse)
 async def generate_batch_embeddings(

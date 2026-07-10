@@ -1,20 +1,24 @@
 #app\api\localization.py
 
 import traceback
+from openai import AsyncOpenAI
 from fastapi import APIRouter, Depends
 from app.schema.dto.localization_dto import BulkLocalizationRequest, BulkLocalizationResponse
 from app.services.localization_service import LocalizationService
+from app.core.dependencies import get_openai_client
 from app.core.logger import setup_logger
 from fastapi import HTTPException
 
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_localization_service() -> LocalizationService:
+def get_localization_service(
+    client: AsyncOpenAI = Depends(get_openai_client)
+) -> LocalizationService:
     """
     LocalizationService 의존성 주입(DI)용 팩토리 함수
     """
-    return LocalizationService()
+    return LocalizationService(client=client)
 
 @router.post("/games/bulk", response_model=BulkLocalizationResponse)
 async def localize_bulk_games(

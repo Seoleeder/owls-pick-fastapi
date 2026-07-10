@@ -1,6 +1,8 @@
 # app\api\owls_chat.py
 
 import traceback
+from openai import AsyncOpenAI
+from app.core.dependencies import get_openai_client
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.schema.dto.owls_chat_dto import (
@@ -14,11 +16,13 @@ from app.core.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_chat_service() -> ChatService:
+def get_chat_service(
+    client: AsyncOpenAI = Depends(get_openai_client)
+) -> ChatService:
     """
     ChatService 의존성 주입(DI)용 팩토리 함수
     """
-    return ChatService()
+    return ChatService(client=client)
 
 @router.post("/embeddings/query", response_model=QueryEmbeddingResponse)
 async def generate_query_embedding(
