@@ -22,6 +22,7 @@ class TraceIdFilter(logging.Filter):
             record.tags = {}
             
         record.tags.update({
+            "application": "owls-pick-fastapi",
             "level": record.levelname
         })
         
