@@ -17,11 +17,13 @@ class TraceIdFilter(logging.Filter):
         # 분산 추적용 Trace ID 주입
         record.trace_id = trace_id_var.get()
         
-        # 모니터링용 라벨 주입
-        record.tags = {
-            "application": "owls-pick-fastapi",
+        # LokiHandler가 매 로그마다 심각도(level)를 식별할 수 있도록 태그 병합
+        if not hasattr(record, "tags") or record.tags is None:
+            record.tags = {}
+            
+        record.tags.update({
             "level": record.levelname
-        }
+        })
         
         return True
 
@@ -65,6 +67,7 @@ def setup_logger(name: str) -> logging.Logger:
         
         loki_handler = LokiHandler(
             url=loki_url,
+            tags={"application": "owls-pick-fastapi"},
             version="1",
         )
         loki_handler.setLevel(log_level)
