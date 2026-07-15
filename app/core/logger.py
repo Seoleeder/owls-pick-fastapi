@@ -27,6 +27,21 @@ class TraceIdFilter(logging.Filter):
         })
         
         return True
+    
+def attach_global_loki_handler(loki_handler: LokiHandler, trace_filter: logging.Filter):
+    """
+    Uvicorn 및 FastAPI 전역 시스템 예외 발생 시 Loki 전송 핸들러 바인딩 함수.
+    """
+    # 치명적 시스템 예외 포착을 위한 타겟 로거 한정
+    target_loggers = ["uvicorn.error", "fastapi"]
+
+    for logger_name in target_loggers:
+        sys_logger = logging.getLogger(logger_name)
+        
+        # 로거 호출 시 핸들러 및 필터 중복 추가 방지
+        if not any(isinstance(h, LokiHandler) for h in sys_logger.handlers):
+            sys_logger.addHandler(loki_handler)
+            sys_logger.addFilter(trace_filter)
 
 def setup_logger(name: str) -> logging.Logger:
     """
@@ -76,5 +91,8 @@ def setup_logger(name: str) -> logging.Logger:
         loki_handler.setFormatter(formatter) # Trace ID가 포함된 포맷으로 전송 데이터 구성
         
         logger.addHandler(loki_handler)
+        
+        # 모듈 로거 생성 시 Uvicorn 및 FastAPI 전역 로거에도 핸들러 및 필터 바인딩
+        attach_global_loki_handler(loki_handler, trace_filter)
         
     return logger
